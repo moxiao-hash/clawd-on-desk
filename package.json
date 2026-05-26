@@ -1,0 +1,171 @@
+{
+  "name": "clawd-on-desk",
+  "version": "0.8.0",
+  "description": "A desktop pet that reacts to your Claude Code sessions in real-time.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node scripts/ensure-sidecar-binaries.js && node launch.js",
+    "build": "electron-builder --win",
+    "build:win:x64": "electron-builder --win nsis:x64",
+    "build:win:arm64": "electron-builder --win nsis:arm64",
+    "build:win:all": "electron-builder --win nsis:x64 nsis:arm64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
+    "fetch:sidecars": "node scripts/fetch-sidecar-binaries.js",
+    "verify:sidecars": "node scripts/verify-sidecar-binaries.js",
+    "prebuild": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:win:arm64": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:win:all": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:mac": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:linux": "node scripts/verify-sidecar-binaries.js",
+    "prebuild:all": "node scripts/verify-sidecar-binaries.js",
+    "test": "node test/run-tests.js",
+    "create-theme": "node scripts/create-theme.js",
+    "export-agent-icons": "node scripts/export-agent-icons.js",
+    "install:claude-hooks": "node hooks/install.js",
+    "uninstall:claude-hooks": "node hooks/uninstall.js",
+    "install:gemini-hooks": "node hooks/gemini-install.js",
+    "install:antigravity-hooks": "node hooks/antigravity-install.js",
+    "install:cursor-hooks": "node hooks/cursor-install.js",
+    "install:kiro-hooks": "node hooks/kiro-install.js",
+    "install:kimi-hooks": "node hooks/kimi-install.js",
+    "install:pi-extension": "node hooks/pi-install.js",
+    "uninstall:pi-extension": "node hooks/pi-install.js --uninstall",
+    "install:openclaw-plugin": "node hooks/openclaw-install.js",
+    "uninstall:openclaw-plugin": "node hooks/openclaw-install.js --uninstall",
+    "install:codex-hooks": "node hooks/codex-install.js",
+    "uninstall:codex-hooks": "node hooks/codex-install.js --uninstall",
+    "install:codex-debug-hooks": "node hooks/codex-debug-install.js",
+    "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall",
+    "install:hermes-plugin": "node hooks/hermes-install.js",
+    "uninstall:hermes-plugin": "node hooks/hermes-install.js --uninstall",
+    "register-protocol:dev": "node launch.js --register-protocol"
+  },
+  "keywords": [
+    "clawd",
+    "desktop-pet",
+    "electron",
+    "claude-code"
+  ],
+  "author": "rullerzhou-afk",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.clawd.on-desk",
+    "productName": "Clawd on Desk",
+    "protocols": [
+      {
+        "name": "Clawd Import Protocol",
+        "schemes": [
+          "clawd"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.entertainment",
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "Clawd-on-Desk-Setup-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "maintainer": "rullerzhou-afk <rullerzhou-afk@users.noreply.github.com>",
+      "icon": "assets/icons",
+      "category": "Utility",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "buildUniversalInstaller": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "files": [
+      "NOTICE.md",
+      "src/**/*",
+      "assets/icon.ico",
+      "assets/icons/**/*",
+      "assets/icons/agents/**/*",
+      "assets/svg/**/*",
+      "assets/sounds/**/*",
+      "assets/tray-icon*.png",
+      "hooks/**/*",
+      "extensions/**/*",
+      "agents/**/*",
+      "themes/**/*"
+    ],
+    "asarUnpack": [
+      "assets/svg/**/*",
+      "hooks/**/*",
+      "extensions/**/*",
+      "themes/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "bin/cc-connect-clawd",
+        "to": "sidecars/cc-connect-clawd"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "rullerzhou-afk",
+        "repo": "clawd-on-desk"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3",
+    "htmlparser2": "^12.0.0",
+    "koffi": "^2.15.2"
+  }
+}
