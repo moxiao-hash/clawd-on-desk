@@ -1155,7 +1155,7 @@ function detectRunningAgentProcesses(callback) {
     const psScript =
       "$names = 'claude.exe','codex.exe','copilot.exe','gemini.exe','agy.exe','codebuddy.exe','kiro-cli.exe','kimi.exe','opencode.exe','pi.exe','hermes.exe'; " +
       "$match = Get-CimInstance Win32_Process | Where-Object { " +
-        "$names -contains $_.Name -or ($_.Name -eq 'node.exe' -and $_.CommandLine -like '*claude-code*') " +
+        "$names -contains $_.Name -or ($_.Name -eq 'node.exe' -and ($_.CommandLine -like '*claude-code*' -or $_.CommandLine -like '*deepseek-harness*' -or $_.CommandLine -like '*@deepseek-ai/dsh*')) " +
       "} | Select-Object -First 1; " +
       "if ($match) { $match.ProcessId }";
     execFile(
@@ -1165,7 +1165,7 @@ function detectRunningAgentProcesses(callback) {
       (err, stdout) => done(!err && /\d+/.test(stdout))
     );
   } else {
-    exec("pgrep -f 'claude-code|codex|copilot|codebuddy|kimi|@earendil-works/pi-coding-agent|pi-coding-agent/dist/cli\\.js' || pgrep -x 'gemini' || pgrep -x 'agy' || pgrep -x 'kiro-cli' || pgrep -x 'opencode' || pgrep -x 'hermes'", { timeout: 3000 },
+    exec("pgrep -f 'claude-code|codex|copilot|codebuddy|kimi|@earendil-works/pi-coding-agent|pi-coding-agent/dist/cli\\.js|deepseek-harness|@deepseek-ai/dsh' || pgrep -x 'gemini' || pgrep -x 'agy' || pgrep -x 'kiro-cli' || pgrep -x 'opencode' || pgrep -x 'hermes'", { timeout: 3000 },
       (err) => done(!err)
     );
   }

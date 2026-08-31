@@ -15,6 +15,7 @@ const opencode = require("../../hooks/opencode-install");
 const pi = require("../../hooks/pi-install");
 const openclaw = require("../../hooks/openclaw-install");
 const hermes = require("../../hooks/hermes-install");
+const dsh = require("../../hooks/dsh-install");
 
 function agentName(agentId) {
   const agent = getAgent(agentId);
@@ -177,6 +178,19 @@ const AGENT_DESCRIPTORS = Object.freeze([
     marker: hermes.PLUGIN_ID,
     managedFiles: hermes.MANAGED_PLUGIN_FILES,
     configFilePath: path.join(hermes.resolveHermesHome(), "config.yaml"),
+  }),
+  Object.freeze({
+    agentId: "deepseek-harness",
+    agentName: agentName("deepseek-harness"),
+    eventSource: agentEventSource("deepseek-harness"),
+    parentDir: null,
+    configPath: null,
+    configMode: "dsh-patch",
+    autoInstall: true,
+    marker: dsh.PLUGIN_DIR_NAME,
+    pluginId: dsh.PLUGIN_ID,
+    detection: "dsh-plugin",
+    pluginEntry: path.join(__dirname, "..", "..", "hooks", dsh.PLUGIN_DIR_NAME, "index.mjs"),
   }),
 ]);
 

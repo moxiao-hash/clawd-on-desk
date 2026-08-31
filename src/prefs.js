@@ -131,6 +131,9 @@ const SCHEMA = {
   keepSizeAcrossDisplays: { type: "boolean", default: false },
   // Music dance: toggle to enable/disable pet dancing when music apps play audio
   musicDanceEnabled: { type: "boolean", default: true },
+  // When true, headless sessions (e.g. claude -p spawned by another UI like
+  // HermesPet) can still trigger permission bubbles instead of auto-denying.
+  allowHeadlessPermissions: { type: "boolean", default: false },
   // Music dance: list of music app process names (comm) to detect
   musicAppNames: {
     type: "array",
@@ -165,6 +168,7 @@ const SCHEMA = {
       "pi": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "openclaw": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
       "hermes": { enabled: true },
+      "deepseek-harness": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },

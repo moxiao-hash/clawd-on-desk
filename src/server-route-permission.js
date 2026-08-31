@@ -539,10 +539,10 @@ function handlePermissionPost(req, res, options) {
       const suggestions = normalizePermissionSuggestions(rawSuggestions);
 
       const existingSession = ctx.sessions.get(sessionId);
-      if (existingSession && existingSession.headless) {
+      if (existingSession && existingSession.headless && !ctx.allowHeadlessPermissions) {
         recordRequestHookEvent.accepted();
-        ctx.permLog(`SKIPPED: headless session=${sessionId}`);
-        ctx.sendPermissionResponse(res, "deny", "Non-interactive session; auto-denied");
+        ctx.permLog(`SKIPPED: headless session=${sessionId} (set allowHeadlessPermissions=true to enable)`);
+        ctx.sendPermissionResponse(res, "deny", "Non-interactive session; auto-denied. Set allowHeadlessPermissions to enable remote approval.");
         return;
       }
 

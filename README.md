@@ -31,7 +31,7 @@ Clawd lives on your desktop and reacts to what your AI coding agent is doing —
 
 Thinking when you prompt, typing when tools run, grooving or juggling for subagents, reviewing permissions, celebrating when tasks complete, sleeping when you step away. Ships with three built-in themes: **Clawd** (pixel crab), **Calico** (三花猫), and **Cloudling** (云宝), with full support for custom themes and imported Codex Pet animation packs.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, **Pi**, **OpenClaw**, and **Hermes Agent**.
+> Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, **Pi**, **OpenClaw**, **Hermes Agent**, and **DeepSeek Harness**.
 
 ## Features
 
@@ -49,6 +49,7 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 - **Pi** — global extension via `~/.pi/agent/extensions/clawd-on-desk` (registered automatically when Clawd starts, or run `npm run install:pi-extension`); interactive lifecycle updates plus permission bubbles for `bash` / `write` / `edit` tool calls, with Pi terminal confirmation fallback
 - **OpenClaw** — state-only plugin integration via `~/.openclaw/openclaw.json` (registered automatically when an OpenClaw config already exists, or run `npm run install:openclaw-plugin`); local `openclaw tui --local` sessions drive Clawd animations, without permission bubbles or terminal focus in Phase 1
 - **Hermes Agent** — [plugin integration](https://hermes-agent.org/) via Hermes' managed plugin directory (registered automatically when Hermes is installed, or run `npm run install:hermes-plugin`); state, sessions, SessionEnd, and terminal focus are supported
+- **DeepSeek Harness** — native [Cordis](https://github.com/cordiverse/cordis) plugin integration via a `.dsh` profile patch layer (registered automatically when the dsh home exists, or run `npm run install:dsh-bridge`); real-time state from session/tool/subagent events plus **blocking permission bubbles** (`/permission`). See [docs/guides/deepseek-harness-integration.md](docs/guides/deepseek-harness-integration.md).
 - **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
 
 ### Animations & Interaction
@@ -62,7 +63,7 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 - **Mini mode** — drag to right edge or right-click "Mini Mode"; Clawd hides at screen edge with peek-on-hover, mini alerts/celebrations, and parabolic jump transitions
 
 ### Permission Bubble
-- **In-app permission review** — when Claude Code, Codex CLI, CodeBuddy, opencode, or Pi request supported tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
+- **In-app permission review** — when Claude Code, Codex CLI, CodeBuddy, opencode, Pi, or DeepSeek Harness request supported tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
 - **Allow / deny / agent-native extras** — one-click approve or reject, plus permission rules / `Always` actions when the source agent supports them
 - **Global hotkeys** — `Ctrl+Shift+Y` to Allow, `Ctrl+Shift+N` to Deny the latest permission bubble (only registered while bubbles are visible)
 - **Stacking layout** — multiple permission requests stack upward from the bottom-right corner

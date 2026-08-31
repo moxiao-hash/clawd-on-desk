@@ -612,6 +612,7 @@ let allowEdgePinningCached = _settingsController.get("allowEdgePinning");
 let keepSizeAcrossDisplaysCached = _settingsController.get("keepSizeAcrossDisplays");
 let musicDanceEnabled = _settingsController.get("musicDanceEnabled");
 let musicAppNames = _settingsController.get("musicAppNames");
+let allowHeadlessPermissions = _settingsController.get("allowHeadlessPermissions");
 
 function getRuntimeBubblePolicy(kind) {
   return getBubblePolicy(_settingsController.getSnapshot(), kind);
@@ -1190,6 +1191,7 @@ const _serverCtx = {
   get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
   get STATE_SVGS() { return _state.STATE_SVGS; },
   get sessions() { return sessions; },
+  get allowHeadlessPermissions() { return allowHeadlessPermissions; },
   isAgentEnabled: (agentId) => _isAgentEnabled({ agents: _settingsController.get("agents") }, agentId),
   isAgentPermissionsEnabled: (agentId) => _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
   isCodexPermissionInterceptEnabled: () => _isCodexPermissionInterceptEnabled({ agents: _settingsController.get("agents") }),
@@ -1800,7 +1802,7 @@ const SETTINGS_MIRROR_SETTERS = {
   sessionHudShowElapsed: (v) => { sessionHudShowElapsed = v; }, sessionHudCleanupDetached: (v) => { sessionHudCleanupDetached = v; },
   sessionHudAutoHide: (v) => { sessionHudAutoHide = v; }, sessionHudPinned: (v) => { sessionHudPinned = v; },
   soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
-  allowEdgePinning: (v) => { allowEdgePinningCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; }, musicDanceEnabled: (v) => { musicDanceEnabled = v; }, musicAppNames: (v) => { musicAppNames = v; },
+  allowEdgePinning: (v) => { allowEdgePinningCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; }, musicDanceEnabled: (v) => { musicDanceEnabled = v; }, musicAppNames: (v) => { musicAppNames = v; }, allowHeadlessPermissions: (v) => { allowHeadlessPermissions = v; },
 };
 
 function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }

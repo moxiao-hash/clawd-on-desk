@@ -267,6 +267,21 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncDeepSeekHarnessBridge() {
+    try {
+      if (typeof ctx.syncDeepSeekHarnessImpl === "function") return ctx.syncDeepSeekHarnessImpl();
+      const { registerDshBridge } = require("../hooks/dsh-install.js");
+      const result = registerDshBridge({ silent: true });
+      if (result && (result.added || result.updated)) {
+        console.log(`Clawd: synced DeepSeek Harness bridge (added=${!!result.added}, updated=${!!result.updated})`);
+      }
+      return result && typeof result === "object" ? result : { status: "ok" };
+    } catch (err) {
+      console.warn("Clawd: failed to sync DeepSeek Harness bridge:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync DeepSeek Harness bridge" };
+    }
+  }
+
   const AGENT_INTEGRATION_SYNCERS = Object.freeze({
     "gemini-cli": syncGeminiHooks,
     "antigravity-cli": syncAntigravityHooks,
@@ -279,6 +294,7 @@ function createIntegrationSyncRuntime(options = {}) {
     pi: syncPiExtension,
     openclaw: syncOpenClawPlugin,
     hermes: syncHermesPlugin,
+    "deepseek-harness": syncDeepSeekHarnessBridge,
   });
 
   const AGENT_INTEGRATION_REPAIRERS = Object.freeze({
@@ -340,6 +356,7 @@ function createIntegrationSyncRuntime(options = {}) {
     syncPiExtension,
     syncOpenClawPlugin,
     syncHermesPlugin,
+    syncDeepSeekHarnessBridge,
     repairCodexHooks,
     repairOpenClawPlugin,
     syncIntegrationForAgent,

@@ -69,7 +69,7 @@ describe("prefs.getDefaults", () => {
 
   it("seeds all known agents as enabled", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "antigravity-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi", "openclaw", "hermes"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "antigravity-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi", "openclaw", "hermes", "deepseek-harness"]) {
       assert.strictEqual(d.agents[id].enabled, true, `${id} should default enabled`);
     }
   });
@@ -77,7 +77,7 @@ describe("prefs.getDefaults", () => {
   it("seeds permission-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
     // Antigravity intentionally excluded — D2 makes it state-only, no bubble.
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi", "deepseek-harness"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,

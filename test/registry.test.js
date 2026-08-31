@@ -20,6 +20,7 @@ describe("Agent Registry", () => {
       "pi",
       "openclaw",
       "hermes",
+      "deepseek-harness",
     ]);
   });
 
@@ -35,6 +36,7 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("pi").name, "Pi");
     assert.strictEqual(registry.getAgent("openclaw").name, "OpenClaw");
     assert.strictEqual(registry.getAgent("hermes").name, "Hermes Agent");
+    assert.strictEqual(registry.getAgent("deepseek-harness").name, "DeepSeek Harness");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 
@@ -67,6 +69,11 @@ describe("Agent Registry", () => {
 
     const hermes = registry.getAgent("hermes");
     assert.deepStrictEqual(hermes.processNames.win, ["hermes.exe"]);
+
+    const dsh = registry.getAgent("deepseek-harness");
+    // DSH runs as a Node process; a binary basename is unreliable, but the
+    // registry exposes the names used by the process-name detector.
+    assert.deepStrictEqual(dsh.processNames.mac, ["dsh", "node"]);
   });
 
   it("should include explicit Linux process names", () => {
@@ -124,6 +131,7 @@ describe("Agent Registry", () => {
     assert.ok(agentIds.includes("pi"));
     assert.ok(agentIds.includes("pi"));
     assert.ok(agentIds.includes("hermes"));
+    assert.ok(agentIds.includes("deepseek-harness"));
   });
 
   it("should have correct capabilities", () => {
@@ -194,6 +202,16 @@ describe("Agent Registry", () => {
     assert.strictEqual(hermes.capabilities.interactiveBubble, false);
     assert.strictEqual(hermes.capabilities.sessionEnd, true);
     assert.strictEqual(hermes.capabilities.subagent, false);
+
+    const dsh = registry.getAgent("deepseek-harness");
+    // Blocking HTTP permission (like Claude Code) + plugin event source.
+    assert.strictEqual(dsh.eventSource, "plugin-event");
+    assert.strictEqual(dsh.capabilities.httpHook, true);
+    assert.strictEqual(dsh.capabilities.permissionApproval, true);
+    assert.strictEqual(dsh.capabilities.interactiveBubble, true);
+    assert.strictEqual(dsh.capabilities.notificationHook, false);
+    assert.strictEqual(dsh.capabilities.sessionEnd, true);
+    assert.strictEqual(dsh.capabilities.subagent, true);
   });
 
   it("should have eventMap for hook-based agents", () => {
@@ -245,6 +263,16 @@ describe("Agent Registry", () => {
     assert.strictEqual(hermes.eventMap.PreToolUse, "working");
     assert.strictEqual(hermes.eventMap.Stop, "attention");
     assert.strictEqual(hermes.eventMap.SessionEnd, "sleeping");
+
+    const dsh = registry.getAgent("deepseek-harness");
+    // Reuses the Claude Code PascalCase vocabulary for state transition reuse.
+    assert.strictEqual(dsh.eventSource, "plugin-event");
+    assert.strictEqual(dsh.eventMap.SessionStart, "idle");
+    assert.strictEqual(dsh.eventMap.UserPromptSubmit, "thinking");
+    assert.strictEqual(dsh.eventMap.PreToolUse, "working");
+    assert.strictEqual(dsh.eventMap.PostToolUseFailure, "error");
+    assert.strictEqual(dsh.eventMap.SubagentStart, "juggling");
+    assert.strictEqual(dsh.eventMap.Stop, "attention");
   });
 
   it("treats Gemini CLI as a hook-only agent", () => {

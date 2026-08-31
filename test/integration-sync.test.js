@@ -34,6 +34,7 @@ function makeRuntime(overrides = {}) {
       return { status: "ok", message: "done" };
     },
     syncHermesPluginImpl: () => calls.push({ name: "hermes" }),
+    syncDeepSeekHarnessImpl: () => calls.push({ name: "deepseek-harness" }),
     ...(overrides.ctx || {}),
   };
   const runtime = createIntegrationSyncRuntime({
@@ -83,6 +84,7 @@ describe("integration sync runtime", () => {
       "pi",
       "openclaw",
       "hermes",
+      "deepseek-harness",
     ]);
   });
 

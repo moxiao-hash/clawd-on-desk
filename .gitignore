@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+.idea/
 
 # Claude Code local config
 .claude/
@@ -29,6 +30,7 @@ docs/**
 !docs/guides/codex-wsl-clarification.md
 !docs/guides/codex-wsl-clarification.zh-CN.md
 !docs/guides/codex-wsl-clarification.ko-KR.md
+!docs/guides/deepseek-harness-integration.md
 !docs/investigations/
 !docs/investigations/permission-hook-fail-deny-investigation.md
 !docs/investigations/codex-subagent-session-meta.md

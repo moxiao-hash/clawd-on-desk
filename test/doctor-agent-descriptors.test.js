@@ -26,6 +26,7 @@ describe("doctor agent descriptors", () => {
         "pi",
         "openclaw",
         "hermes",
+        "deepseek-harness",
       ]
     );
   });

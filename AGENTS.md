@@ -4,7 +4,7 @@ This file is the entry point for coding agents working in this repository. Keep 
 
 ## Project Overview
 
-Clawd 是一个 Electron 桌宠：通过 hook、日志轮询、plugin 和 extension 感知 AI coding agent 的工作状态，并播放像素风动画。当前支持 Claude Code、Codex CLI、Copilot CLI、Gemini CLI、Antigravity CLI (agy)、Cursor Agent、CodeBuddy、Kiro CLI、Kimi Code CLI (Kimi-CLI)、opencode、Pi、OpenClaw；内置 Clawd / Calico / Cloudling 三套主题，支持用户主题；平台覆盖 Windows、macOS、Linux，UI 支持 en / zh / ko / ja。
+Clawd 是一个 Electron 桌宠：通过 hook、日志轮询、plugin 和 extension 感知 AI coding agent 的工作状态，并播放像素风动画。当前支持 Claude Code、Codex CLI、Copilot CLI、Gemini CLI、Antigravity CLI (agy)、Cursor Agent、CodeBuddy、Kiro CLI、Kimi Code CLI (Kimi-CLI)、opencode、Pi、OpenClaw、DeepSeek Harness (dsh)；内置 Clawd / Calico / Cloudling 三套主题，支持用户主题；平台覆盖 Windows、macOS、Linux，UI 支持 en / zh / ko / ja。
 
 ## Common Commands
 
@@ -60,6 +60,7 @@ Copilot CLI 是唯一在本地启动时不会自动同步 hooks 的受支持 age
 - `docs/guides/state-mapping.md`：状态 → 动画权威表
 - `docs/guides/guide-theme-creation.md`：主题作者指南
 - `docs/guides/setup-guide.md`：安装、远程 SSH、各 agent 接入
+- `docs/guides/deepseek-harness-integration.md`：DeepSeek Harness (dsh) 桥接插件的注册与启用
 - `docs/guides/known-limitations.md`：用户向已知限制
 - `docs/guides/codex-wsl-clarification.md`：Codex / WSL 路径与 Node 说明
 
