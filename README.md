@@ -33,6 +33,21 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, **Pi**, **OpenClaw**, **Hermes Agent**, and **DeepSeek Harness**.
 
+> ## 本仓库相对上游的新增（本 fork 定制）
+>
+> 本仓库 fork 自 **原开源仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)**。以下为相对上游**新增 / 改动**的内容（重点突出）：
+>
+> ### 🆕 DeepSeek Harness (`dsh`) agent 集成（主要新增）
+> 让 Clawd 实时感知 **DeepSeek Harness** 的工作状态，采用与 Claude Code **完全一致的 hook 机制**：
+> - `hooks/clawd-dsh-hook.js`：由 DSH 内置 `dsh-hooks-claude-code` 桥接运行的 command hook，上报 `idle / thinking / working / attention / juggling`。
+> - `hooks/dsh-plugin/`：原生插件，补报 `error`，并实现 **审批（Allow / Always / Deny）** 与 **elicitation 回答**（桌宠气泡）。
+> - `hooks/dsh-install.js`：安装器，生成 Claude Code 格式 `hooks.json` 并挂载 dsh profile 补丁层（双插件）。
+> - 注册与接线：`agents/deepseek-harness.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js`、`src/state.js`、doctor 描述符、`assets/icons/agents/deepseek-harness.png`。
+> - 详见 [docs/guides/deepseek-harness-integration.md](docs/guides/deepseek-harness-integration.md)。
+>
+> ### 🆕 `allowHeadlessPermissions`（headless 会话权限气泡）
+> `src/main.js` + `src/server-route-permission.js` + `src/prefs.js`：允许 headless 会话触发权限气泡（默认关闭），供远程 / 无头场景使用。
+
 ## Features
 
 ### Multi-Agent Support

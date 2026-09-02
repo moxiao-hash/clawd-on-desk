@@ -6,11 +6,16 @@ const os = require("os");
 const {
   registerDshBridge,
   resolvePluginFileUrl,
+  resolveHookScriptPath,
   resolveDshHome,
   buildPatchBody,
+  buildHooksJson,
+  writeHooksJson,
+  hooksJsonPath,
   mergeIntoPatchLayer,
   layerHasPlugin,
   DEFAULT_PROFILE,
+  BRIDGE_PLUGIN_NAME,
 } = require("../hooks/dsh-install");
 
 const tempDirs = [];
@@ -24,20 +29,28 @@ afterEach(() => {
 });
 
 const FAKE_BASE = "/app/clawd/hooks";
+const HOOKS = path.join("/app/clawd", "h2.json");
+const PLUGIN = "file:///app/clawd/hooks/dsh-plugin/index.mjs";
 
-describe("dsh bridge installer", () => {
-  it("creates the standalone patch overlay and registers into the patch layer", () => {
+describe("dsh bridge installer (command hooks + native plugin)", () => {
+  it("creates hooks.json + a two-plugin patch and registers into the profile/global layers", () => {
     const home = makeTempDir("home");
     const result = registerDshBridge({ silent: true, dshHome: home, baseDir: FAKE_BASE });
 
     assert.strictEqual(result.status, "ok");
     assert.strictEqual(result.added, true);
+    // hooks.json written.
+    assert.ok(fs.existsSync(result.hooksPath), "hooks.json missing");
+    const hooks = JSON.parse(fs.readFileSync(result.hooksPath, "utf8"));
+    assert.ok(hooks.hooks.SessionStart && hooks.hooks.SubagentStop, "hooks.json lacks events");
+    // overlay + PROFILE patch layer written with both plugins (default writes profile layer only).
     assert.ok(fs.existsSync(path.join(home, "clawd-on-desk.cordis.yml")));
-    const layer = fs.readFileSync(path.join(home, "cordis.patch.yml"), "utf8");
-    // The requested plugin entry's `name` is a file:// URL to the plugin entry.
-    const pluginFile = resolvePluginFileUrl(FAKE_BASE);
-    assert.ok(layer.includes(`id: clawd-on-desk`), `missing plugin id:\n${layer}`);
-    assert.ok(layer.includes(pluginFile), `missing plugin file URL:\n${layer}`);
+    const layer = fs.readFileSync(path.join(home, "profiles", "web", "cordis.patch.yml"), "utf8");
+    assert.ok(layer.includes("id: dsh-hooks-claude-code"), `missing bridge plugin:\n${layer}`);
+    assert.ok(layer.includes("id: clawd-on-desk"), `missing native plugin:\n${layer}`);
+    assert.ok(layer.includes(PLUGIN), `missing plugin file URL:\n${layer}`);
+    // default does NOT write the home/global layer (avoids duplicate loader entry id).
+    assert.ok(!fs.existsSync(path.join(home, "cordis.patch.yml")), "global layer should not be written by default");
   });
 
   it("is idempotent across repeated registration", () => {
@@ -47,82 +60,95 @@ describe("dsh bridge installer", () => {
 
     assert.strictEqual(second.added, false);
     assert.strictEqual(second.updated, false);
-    const layer = fs.readFileSync(path.join(home, "cordis.patch.yml"), "utf8");
+    const layer = fs.readFileSync(path.join(home, "profiles", "web", "cordis.patch.yml"), "utf8");
     const count = layer.split("id: clawd-on-desk").length - 1;
     assert.strictEqual(count, 1, `duplicated plugin id:\n${layer}`);
   });
 
-  it("preserves unrelated user patch content", () => {
+  it("preserves unrelated user patch content in the profile layer", () => {
     const home = makeTempDir("home");
-    // Pre-existing user patch layer with an unrelated insert.
+    const webDir = path.join(home, "profiles", "web");
+    fs.mkdirSync(webDir, { recursive: true });
+    // Pre-existing PROFILE patch layer with an unrelated insert.
     fs.writeFileSync(
-      path.join(home, "cordis.patch.yml"),
+      path.join(webDir, "cordis.patch.yml"),
       "- insert:\n    - id: memory-memorix\n      name: '@deepseek-ai/dsh-mcp-client'\n      config:\n        serverName: memorix\n",
       "utf8",
     );
     registerDshBridge({ silent: true, dshHome: home, baseDir: FAKE_BASE });
 
-    const layer = fs.readFileSync(path.join(home, "cordis.patch.yml"), "utf8");
+    const layer = fs.readFileSync(path.join(webDir, "cordis.patch.yml"), "utf8");
     assert.ok(layer.includes("memory-memorix"), "clobbered existing patch");
     assert.ok(layer.includes("id: clawd-on-desk"), "missing our plugin id");
   });
 
-  it("appends a new top-level insert slice to an existing patch list", () => {
-    const existing = "- insert:\n    - id: a\n      name: '@x/a'\n";
-    const merged = mergeIntoPatchLayer(existing, "file:///app/clawd/hooks/dsh-plugin/index.mjs");
-    assert.strictEqual(merged.added, true);
-    assert.ok(merged.text.includes("- insert:\n    - id: a"));
-    assert.ok(merged.text.includes("id: clawd-on-desk"));
-  });
-
-  it("builds a standalone patch body that is a valid insert slice", () => {
-    const body = buildPatchBody("file:///app/clawd/hooks/dsh-plugin/index.mjs");
-    // Leading comment lines are valid YAML; the first directive item is `- insert:`.
+  it("builds a patch body mounting BOTH the bridge and the native plugin", () => {
+    const body = buildPatchBody(HOOKS, PLUGIN);
     assert.ok(/^- insert:/m.test(body), `missing insert slice:\n${body}`);
+    assert.ok(body.includes("id: dsh-hooks-claude-code"));
+    assert.ok(body.includes(BRIDGE_PLUGIN_NAME));
+    assert.ok(body.includes(`configPath: "${HOOKS}"`), `missing configPath:\n${body}`);
     assert.ok(body.includes("id: clawd-on-desk"));
-    assert.ok(body.includes("file:///app/clawd/hooks/dsh-plugin/index.mjs"));
-    assert.ok(body.includes("events: true"));
+    assert.ok(body.includes(PLUGIN));
     assert.ok(body.includes("approval: true"));
   });
 
-  it("detects an existing plugin id in a patch layer", () => {
+  it("builds a Claude Code hooks.json wiring the bridge-supported events", () => {
+    const json = buildHooksJson("/app/clawd/hooks/clawd-dsh-hook.js", "/usr/bin/node");
+    const events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStart", "SubagentStop"];
+    for (const event of events) {
+      assert.ok(json.hooks[event], `missing ${event}`);
+      const cmd = json.hooks[event][0].hooks[0].command;
+      assert.ok(cmd.includes('"/usr/bin/node"'), `bad node: ${cmd}`);
+      assert.ok(cmd.includes('"/app/clawd/hooks/clawd-dsh-hook.js"'), `bad script: ${cmd}`);
+      assert.ok(cmd.endsWith(` ${event}`), `bad event: ${cmd}`);
+    }
+  });
+
+  it("writes hooks.json to $DSH_HOME/clawd/dsh-hooks.json", () => {
+    const home = makeTempDir("home");
+    const hooksPath = writeHooksJson(home, "/app/clawd/hooks/clawd-dsh-hook.js", "/usr/bin/node");
+    assert.strictEqual(hooksPath, hooksJsonPath(home));
+    assert.ok(fs.existsSync(hooksPath));
+    const json = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+    assert.ok(json.hooks.PreToolUse);
+  });
+
+  it("detects an existing plugin id (either plugin) in a patch layer", () => {
     assert.strictEqual(layerHasPlugin("id: clawd-on-desk"), true);
+    assert.strictEqual(layerHasPlugin("id: dsh-hooks-claude-code"), true);
     assert.strictEqual(layerHasPlugin("id: memory-memorix"), false);
     assert.strictEqual(layerHasPlugin(""), false);
   });
 
-  it("replaces an empty `[]` profile patch layer (comment header preserved-agnostic)", () => {
-    // A fresh dsh web profile user patch layer is `[]`, often under a comment
-    // header. Appending a `- insert:` after `[]` would be invalid YAML; the
-    // merge must REPLACE the empty list with our slice.
-    const existing = "# Your patch layer for this dsh profile...\n[]\n";
-    const merged = mergeIntoPatchLayer(existing, "file:///app/clawd/hooks/dsh-plugin/index.mjs");
+  it("merges into an existing list and replaces an empty `[]` profile layer", () => {
+    const existing = "- insert:\n    - id: a\n      name: '@x/a'\n";
+    const merged = mergeIntoPatchLayer(existing, HOOKS, PLUGIN);
     assert.strictEqual(merged.added, true);
-    // The `[]` placeholder must be gone (replaced), not left dangling.
-    assert.ok(!/\[\]/.test(merged.text), `empty [] left dangling:\n${merged.text}`);
-    assert.ok(merged.text.includes("id: clawd-on-desk"));
+    assert.ok(merged.text.includes("- insert:\n    - id: a"));
+    assert.ok(merged.text.includes("id: dsh-hooks-claude-code"));
+
+    const empty = "# comment\n[]\n";
+    const replaced = mergeIntoPatchLayer(empty, HOOKS, PLUGIN);
+    assert.strictEqual(replaced.added, true);
+    assert.ok(!/\[\]/.test(replaced.text), "empty [] left dangling");
   });
 
-  it("defaults the profile layer to `web`", () => {
-    assert.strictEqual(DEFAULT_PROFILE, "web");
-  });
-
-  it("writes the profile-level patch layer alongside the global layer", () => {
-    const home = makeTempDir("home");
-    // Pre-create the web profile directory + empty `[]` patch layer.
-    const webDir = path.join(home, "profiles", "web");
-    fs.mkdirSync(webDir, { recursive: true });
-    fs.writeFileSync(path.join(webDir, "cordis.patch.yml"), "# comment\n[]\n", "utf8");
-
-    const result = registerDshBridge({ silent: true, dshHome: home, baseDir: FAKE_BASE });
-
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(result.profile, "web");
-    const profileText = fs.readFileSync(path.join(webDir, "cordis.patch.yml"), "utf8");
-    assert.ok(profileText.includes("id: clawd-on-desk"), `profile layer missing plugin:\n${profileText}`);
-    // Global layer also written.
-    assert.ok(fs.readFileSync(path.join(home, "cordis.patch.yml"), "utf8").includes("id: clawd-on-desk"));
-  });
+    it("defaults the profile layer to `web` and only writes profile (writeGlobal opts in for global)", () => {
+      assert.strictEqual(DEFAULT_PROFILE, "web");
+      const home = makeTempDir("home");
+      const webDir = path.join(home, "profiles", "web");
+      fs.mkdirSync(webDir, { recursive: true });
+      fs.writeFileSync(path.join(webDir, "cordis.patch.yml"), "# comment\n[]\n", "utf8");
+      const result = registerDshBridge({ silent: true, dshHome: home, baseDir: FAKE_BASE });
+      assert.strictEqual(result.profile, "web");
+      assert.ok(fs.readFileSync(path.join(webDir, "cordis.patch.yml"), "utf8").includes("id: clawd-on-desk"));
+      // global layer NOT written by default
+      assert.ok(!fs.existsSync(path.join(home, "cordis.patch.yml")), "global not written by default");
+      // writeGlobal:true DOES write the global layer
+      registerDshBridge({ silent: true, dshHome: home, baseDir: FAKE_BASE, writeGlobal: true });
+      assert.ok(fs.readFileSync(path.join(home, "cordis.patch.yml"), "utf8").includes("id: clawd-on-desk"));
+    });
 
   it("skips when the dsh home does not exist", () => {
     const home = path.join(os.tmpdir(), `clawd-dsh-absent-${Date.now()}`);
@@ -134,16 +160,15 @@ describe("dsh bridge installer", () => {
 
   it("resolves DSH_HOME env override and falls back to ~/.dsh", () => {
     assert.strictEqual(resolveDshHome({ dshHome: "/custom/home" }), "/custom/home");
-    assert.strictEqual(
-      resolveDshHome({ env: { DSH_HOME: "/env/home" } }),
-      "/env/home",
-    );
+    assert.strictEqual(resolveDshHome({ env: { DSH_HOME: "/env/home" } }), "/env/home");
     assert.strictEqual(resolveDshHome({ env: {} }), path.join(os.homedir(), ".dsh"));
   });
 
-  it("resolves the plugin entry to a file:// URL ending in dsh-plugin/index.mjs", () => {
-    const url = resolvePluginFileUrl("/app/clawd/hooks");
-    assert.ok(url.startsWith("file://"), `not a file url: ${url}`);
-    assert.ok(url.endsWith("/dsh-plugin/index.mjs"), `wrong suffix: ${url}`);
+  it("resolves the plugin file URL and hook script path", () => {
+    const url = resolvePluginFileUrl(FAKE_BASE);
+    assert.ok(url.startsWith("file://"));
+    assert.ok(url.endsWith("/dsh-plugin/index.mjs"));
+    const script = resolveHookScriptPath(FAKE_BASE);
+    assert.ok(script.endsWith("/clawd-dsh-hook.js"));
   });
 });

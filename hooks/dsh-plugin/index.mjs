@@ -1,35 +1,21 @@
-// Clawd on Desk — DeepSeek Harness (dsh) native bridge plugin
+// Clawd on Desk — DeepSeek Harness (dsh) native bridge plugin (supplement)
 //
-// Runs INSIDE the dsh process (a Cordis host) and forwards harness lifecycle,
-// tool, and approval activity to the Clawd desktop pet over HTTP:
+// The dsh `dsh-hooks-claude-code` bridge runs our command hook
+// (hooks/clawd-dsh-hook.js) for the events it supports (SessionStart /
+// UserPromptSubmit / PreToolUse / PostToolUse / Stop / SubagentStart /
+// SubagentStop). This plugin supplements what the bridge does not run:
 //
-//   - session / prompt / tool / subagent events → POST /state
-//   - blocking permission asks                 → POST /permission
+//   - error          → tools/post-execute with result.error → POST /state (error)
+//   - approval       → approval/request answerer → Clawd /permission bubble
+//                      (Allow / Always=session-scoped remember / Deny)
+//   - user-questions → user-questions/request answerer → Clawd elicitation bubble
+//                      (options + free-text answer → answers back to dsh)
 //
-// This is a "native hook": DSH deliberately reserves no hook script format;
-// a hook is just a normal Cordis plugin that subscribes to the typed lifecycle
-// events. We subscribe to the same interception extension points the shipped
-// dsh-hooks-claude-code bridge uses (agent/session-start, agent/pre-step,
-// tools/pre-execute, tools/post-execute, agent/turn-stopping, subagent/*),
-// so behaviorally the pet sees dsh exactly like it sees Claude Code.
-//
-// Design invariants (mirrors hooks/opencode-plugin/index.mjs):
-//   - fire-and-forget state: never await the /state fetch, so slow/broken
-//     Clawd cannot stall the harness
-//   - same-state dedup: consecutive identical Clawd states skip the POST
-//   - self-healing port discovery: read ~/.clawd/runtime.json, else probe
-//     the SERVER_PORTS range
-//   - permission is BLOCKING (like Claude Code, unlike opencode): the plugin
-//     holds one open HTTP request until the Clawd permission bubble answers,
-//     then maps the decision back to an ApprovalOutcome; if Clawd is
-//     unreachable it delegates via next() so dsh's own UI can answer.
-//
-// Plugin surface (dsh convention):
-//   export const name = 'clawd-on-desk'
-//   export function apply(ctx, config) { ... }
-// No `inject`: the bridge only needs builtins + fetch, and reads optional
-// services (sessionProjections / agents / shell) through `ctx.get()` so a lean
-// deployment that omits them still loads.
+// It is a "native hook": a plain Cordis plugin subscribing the typed extension
+// points. Because dsh dispatches these as agent-scoped waterfalls, every
+// answerer is registered `{ global: true, prepend: true }` so it receives all
+// agents and runs before dsh's built-in web answerer, and it uses the real
+// session id from the request's agent.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -38,58 +24,24 @@ import { createHash } from "node:crypto";
 
 const CLAWD_DIR = join(homedir(), ".clawd");
 const RUNTIME_CONFIG_PATH = join(CLAWD_DIR, "runtime.json");
-// Diagnostic: written on plugin apply, so we can prove the plugin is loaded.
 const LOADED_MARKER_PATH = join(CLAWD_DIR, "dsh-plugin.loaded");
-// Diagnostic: appended when the approval answerer is actually reached.
 const APPROVAL_LOG = join(CLAWD_DIR, "dsh-approval.log");
 const SERVER_PORTS = [23333, 23334, 23335, 23336, 23337];
 const STATE_PATH = "/state";
 const PERMISSION_PATH = "/permission";
 const AGENT_ID = "deepseek-harness";
 
-// Fire-and-forget /state timeout. Clawd's IPC roundtrip (main → renderer →
-// main) can be slow under load; 1000ms is generous and still unblocks fast.
 const STATE_TIMEOUT_MS = 1000;
-// /permission is a blocking hold — the bubble answers it. If the user never
-// answers and the DSH-side signal also never fires, cap the hold so the
-// harness is not wedged forever (Clawd keeps its own res timer too).
 const PERMISSION_TIMEOUT_MS = 590000; // ~10 min, matches Clawd's default
 
-// dsh session-event vocabulary → Clawd state. Mirrors agents/deepseek-harness.js
-// eventMap. The plugin emits the Clawd-internal event name too, so Dashboard /
-// session HUD get a meaningful event label.
-const EVENT_TO_STATE = {
-  SessionStart: "idle",
-  SessionEnd: "sleeping",
-  UserPromptSubmit: "thinking",
-  PreToolUse: "working",
-  PostToolUse: "working",
-  PostToolUseFailure: "error",
-  Stop: "attention",
-  StopFailure: "error",
-  SubagentStart: "juggling",
-  SubagentStop: "working",
-  PreCompact: "sweeping",
-  PostCompact: "attention",
-  Notification: "notification",
-};
+const HANDLED = new Set(); // tool names the user has "Always" allowed (session-scoped)
 
-// States Clawd treats as "actively doing a tool/step" are not annotated here:
-// the plugin emits one state per lifecycle event, and Clawd's state machine
-// (state.js) owns priority/transition/release semantics.
-
-let lastKey = null; // `${session_id}:${state}:${tool_name}` for dedup
-
-// The approval seam does NOT carry tool arguments (a `callId` links the ask to
-// an already-streamed tool/call). We cache callId → { name, arguments } as the
-// tool is dispatched, so the permission bubble can show the real payload.
+// tool call id → { name, arguments } so the approval bubble shows the payload.
 const toolCallCache = new Map();
 
-/** Discover the live Clawd HTTP port. Cache the answer; re-probe only on miss. */
 let cachedPort = null;
 let scanPromise = null;
 
-/** 1) Prefer the runtime.json Clawd wrote on startup (fast path). */
 function portFromRuntime() {
   try {
     const raw = JSON.parse(readFileSync(RUNTIME_CONFIG_PATH, "utf8"));
@@ -99,7 +51,6 @@ function portFromRuntime() {
   return null;
 }
 
-/** 2) On miss, scan the SERVER_PORTS range for a Clawd `x-clawd-server` response. */
 async function scanClawdPort() {
   if (!scanPromise) {
     scanPromise = (async () => {
@@ -109,9 +60,7 @@ async function scanClawdPort() {
           const timer = setTimeout(() => ctrl.abort(), 300);
           const res = await fetch(`http://127.0.0.1:${port}/state`, { signal: ctrl.signal });
           clearTimeout(timer);
-          if (res && res.headers && res.headers.get("x-clawd-server") === "clawd-on-desk") {
-            return port;
-          }
+          if (res && res.headers && res.headers.get("x-clawd-server") === "clawd-on-desk") return port;
         } catch {}
       }
       return null;
@@ -120,20 +69,14 @@ async function scanClawdPort() {
   return scanPromise;
 }
 
-/** Resolve the Clawd port (runtime.json first, then a bounded port scan). */
 async function discoverClawdPort() {
   if (!cachedPort) {
     const fromRuntime = portFromRuntime();
-    if (fromRuntime) {
-      cachedPort = fromRuntime;
-    } else {
-      cachedPort = await scanClawdPort();
-    }
+    cachedPort = fromRuntime ? fromRuntime : await scanClawdPort();
   }
   return cachedPort;
 }
 
-/** A tiny hash so Clawd can correlate permission work with a /state event. */
 function fingerprint(value) {
   if (value === undefined || value === null) return null;
   try {
@@ -143,21 +86,16 @@ function fingerprint(value) {
   }
 }
 
-/**
- * Fire-and-forget state POST. Returns a boolean "delivered" for logging; the
- * caller never awaits it, so a slow/hung Clawd cannot stall the harness.
- */
 async function postState(payload) {
   const port = await discoverClawdPort();
   if (!port) return false;
-  const body = JSON.stringify(payload);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), STATE_TIMEOUT_MS);
   try {
     await fetch(`http://127.0.0.1:${port}${STATE_PATH}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body,
+      body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
     return true;
@@ -168,51 +106,33 @@ async function postState(payload) {
   }
 }
 
-/**
- * Forward one lifecycle/tool event to Clawd. Dedups identical consecutive
- * (session, state, tool) triples; suppresses a thinking regression while an
- * active state is current.
- */
+function sessionOf(agent) {
+  if (!agent || !agent.session) return {};
+  const h = agent.session.header || {};
+  return { sessionId: h.id || "", cwd: h.cwd || "" };
+}
+
+/** Forward one supplementary state event (the bridge does not run these). */
 function forward(event, state, opts = {}) {
-  if (typeof opts.config === "object" && opts.config !== null && opts.config.events === false) {
-    return;
-  }
   const sessionId = opts.sessionId || "default";
-  const key = `${sessionId}:${state}:${opts.toolName || ""}`;
-  if (key === lastKey) return;
-  const body = {
-    state,
-    session_id: sessionId,
-    event,
-    agent_id: AGENT_ID,
-  };
+  const body = { state, session_id: sessionId, event, agent_id: AGENT_ID };
   if (opts.cwd) body.cwd = opts.cwd;
   if (opts.toolName) {
     body.tool_name = opts.toolName;
     if (opts.toolUseId) body.tool_use_id = opts.toolUseId;
-    const fp = fingerprint(opts.toolInput);
-    if (fp) body.tool_input_fingerprint = fp;
   }
-  lastKey = key;
-  postState(body).then((ok) => {
-    if (!ok) lastKey = null; // allow retry next event
-  });
+  postState(body);
 }
-/** Blocking /permission hold. Resolves to Clawd's behavior ("allow"/"deny"/null). */
-async function postPermission(ctx, req, config, signal) {
+
+/** Blocking /permission hold. Returns Clawd's `{behavior, updatedInput, updatedPermissions}` or null. */
+async function postPermission(req, config, signal) {
   const port = await discoverClawdPort();
   if (!port) return null;
   const cached = (req && req.callId) ? toolCallCache.get(req.callId) : null;
   const toolName = (cached && cached.name) || (req && req.toolName) || "unknown";
   const toolInput = (cached && cached.arguments) || {};
-  // The approval request has no `sessionId`; the real session id lives on the
-  // request's agent (the same id /state reports), so Clawd can attach the
-  // bubble to the ACTIVE session instead of the generic "default" (which Clawd
-  // auto-allows because no live session maps to it).
-  const sessionId =
-    (req && req.agent && req.agent.session && req.agent.session.header && req.agent.session.header.id)
-    || (req && req.sessionId)
-    || "default";
+  const sessionId = (req && req.agent && req.agent.session && req.agent.session.header && req.agent.session.header.id)
+    || (req && req.sessionId) || "default";
   const body = JSON.stringify({
     agent_id: AGENT_ID,
     session_id: sessionId,
@@ -220,20 +140,11 @@ async function postPermission(ctx, req, config, signal) {
     tool_input: toolInput,
     tool_use_id: (req && req.callId) || undefined,
     tool_input_fingerprint: fingerprint(toolInput),
-    // hint surfaced by Clawd's permission bubble / remote approval
     ...(req && req.reason ? { reason: req.reason } : {}),
   });
-
-  // Diagnostic: log the exact request we send, so we can see why Clawd
-  // auto-allows the plugin's request while an equivalent curl blocks.
   try {
-    writeFileSync(APPROVAL_LOG,
-      `postPermission REQUEST session=${sessionId} tool=${toolName} tool_use_id=${req && req.callId} tool_input=${JSON.stringify(toolInput).slice(0, 160)} fp=${fingerprint(toolInput)}\n`,
-      { flag: "a" });
+    writeFileSync(APPROVAL_LOG, `postPermission REQUEST session=${sessionId} tool=${toolName} tool_use_id=${req && req.callId}\n`, { flag: "a" });
   } catch {}
-
-  // Hold the connection open until the bubble answers. The DSH-side approval
-  // AbortSignal cancels the hold when the harness withdraws the question.
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   if (signal) signal.addEventListener("abort", onAbort, { once: true });
@@ -246,20 +157,12 @@ async function postPermission(ctx, req, config, signal) {
       signal: ctrl.signal,
     });
     const text = await res.text();
-    // Diagnostic: record Clawd's actual response + which session id we sent.
     try {
-      writeFileSync(APPROVAL_LOG,
-        `postPermission -> status=${res.status} session=${sessionId} tool=${toolName} body=${text.slice(0, 120)}\n`,
-        { flag: "a" });
+      writeFileSync(APPROVAL_LOG, `postPermission -> status=${res.status} session=${sessionId} tool=${toolName} body=${text.slice(0, 160)}\n`, { flag: "a" });
     } catch {}
-    if (res.status === 204) return null; // no-decision path → delegate
+    if (res.status === 204) return null;
     return parsePermissionResponse(text);
-  } catch (error) {
-    try {
-      writeFileSync(APPROVAL_LOG,
-        `postPermission FAILED session=${sessionId} tool=${toolName} err=${String(error && error.message || error)}\n`,
-        { flag: "a" });
-    } catch {}
+  } catch {
     return null;
   } finally {
     clearTimeout(timer);
@@ -267,143 +170,169 @@ async function postPermission(ctx, req, config, signal) {
   }
 }
 
-/** Clawd returns { hookSpecificOutput: { decision: { behavior } } }. */
+/** Clawd returns { hookSpecificOutput: { decision } }. */
 function parsePermissionResponse(text) {
   if (!text) return null;
   try {
     const data = JSON.parse(text);
     const decision = data && data.hookSpecificOutput && data.hookSpecificOutput.decision;
     if (!decision) return null;
-    return typeof decision === "string" ? decision : decision.behavior || null;
+    return {
+      behavior: typeof decision === "string" ? decision : decision.behavior || null,
+      updatedPermissions: decision.updatedPermissions,
+      updatedInput: decision.updatedInput,
+    };
   } catch {
     return null;
   }
 }
 
-/** Map a Clawd decision to a dsh ApprovalOutcome. */
 function toOutcome(behavior) {
-  if (behavior === "allow") return "allowed-once";
+  if (behavior === "allow" || behavior === "always") return "allowed-once";
   if (behavior === "deny") return "rejected";
   return null;
 }
 
-/** The agent's session header id/cwd, from any event that carries an agent. */
-function sessionOf(ctx, agent) {
-  if (!agent || !agent.session) return {};
-  const h = agent.session.header || {};
-  return { sessionId: h.id || "", cwd: h.cwd || "" };
+/** Map a Clawd decision to a dsh ApprovalOutcome, recording an Always grant. */
+function decisionToOutcome(req, decision) {
+  if (!decision || !decision.behavior) return null;
+  const toolName = (req && req.toolName) || "unknown";
+  if (decision.behavior === "always" || isAlwaysGrant(decision.updatedPermissions)) {
+    HANDLED.add(toolName); // session-scoped remember
+  }
+  return toOutcome(decision.behavior);
+}
+
+function isAlwaysGrant(updatedPermissions) {
+  return Array.isArray(updatedPermissions)
+    && updatedPermissions.some((p) => p && typeof p === "object"
+      && (p.permission === "allowAlways" || p.permission === "always" || p.behavior === "always"));
 }
 
 /**
- * dsh plugin register/apply. `config` fields:
- *   - events: false disables state forwarding entirely (default: on)
- *   - approval: false disables the /permission answerer (default: on)
+ * Forward a dsh user-questions request to Clawd's elicitation channel so the
+ * user can answer (select an option and/or type free text) in the pet bubble.
+ * Reuses POST /permission with tool_name "AskUserQuestion"; Clawd's elicitation
+ * branch returns the answers in `updatedInput.answers`.
+ */
+async function requestElicitation(questions, req, config, signal) {
+  const port = await discoverClawdPort();
+  if (!port) return null;
+  const sessionId = (req && req.agent && req.agent.session && req.agent.session.header && req.agent.session.header.id) || "default";
+  const body = JSON.stringify({
+    agent_id: AGENT_ID,
+    session_id: sessionId,
+    tool_name: "AskUserQuestion",
+    tool_input: { questions },
+    tool_use_id: (questions[0] && questions[0].id) || undefined,
+  });
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => ctrl.abort(), PERMISSION_TIMEOUT_MS);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}${PERMISSION_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: ctrl.signal,
+    });
+    if (res.status === 204) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/** Parse Clawd elicitation answers. Clawd returns updatedInput.answers as
+ *  `{ [questionText]: answerText }` (see permission.js buildElicitationUpdatedInput).
+ *  We map that back to dsh's `answers` array [{id, selected[], custom}], putting
+ *  the answer in `selected` when it matches an offered option label, else `custom`. */
+function parseElicitationAnswers(text, originalQuestions) {
+  if (!text) return null;
+  try {
+    const data = JSON.parse(text);
+    const decision = data && data.hookSpecificOutput && data.hookSpecificOutput.decision;
+    const updatedInput = decision && decision.updatedInput;
+    if (!updatedInput) return null;
+    const claudeAnswers = updatedInput.answers; // { questionText: answerText }
+    if (!claudeAnswers || typeof claudeAnswers !== "object") return null;
+    const questions = Array.isArray(updatedInput.questions)
+      ? updatedInput.questions
+      : (Array.isArray(originalQuestions) ? originalQuestions : []);
+    const out = [];
+    for (const q of questions) {
+      if (!q || typeof q.question !== "string" || !q.question) continue;
+      const text = claudeAnswers[q.question];
+      if (typeof text !== "string" || !text.trim()) continue;
+      const id = q.id || q.question;
+      const item = { id, selected: [] };
+      const optionLabels = (Array.isArray(q.options) ? q.options : []).map((o) => o && o.label);
+      if (optionLabels.includes(text)) item.selected = [text];
+      else item.custom = text;
+      out.push(item);
+    }
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * dsh plugin apply. `config` fields: approval (default on), questions (default on).
  */
 export function apply(ctx, config = {}) {
-  const eventsEnabled = config.events !== false;
   const approvalEnabled = config.approval !== false;
+  const questionsEnabled = config.questions !== false;
 
-  // Diagnostic: prove this plugin is loaded by the harness. Written on every
-  // apply; a stale file with an old timestamp means a previous boot loaded it.
   try {
     writeFileSync(LOADED_MARKER_PATH, `loaded ${new Date().toISOString()}\npid=${process.pid}\n`, "utf8");
   } catch {}
 
-  // ── lifecycle: session start → idle ──
-  ctx.on("agent/session-start", ({ agent, source }) => {
-    const { sessionId, cwd } = sessionOf(ctx, agent);
-    forward("SessionStart", "idle", {
-      config: eventsEnabled ? config : { events: false },
-      sessionId,
-      cwd,
-    });
-  }, { global: true });
-
-  // ── prompt → thinking (must delegate so later listeners can rewrite/reject) ──
-  ctx.on("agent/pre-step", async ({ agent, messages }, next) => {
-    const { sessionId, cwd } = sessionOf(ctx, agent);
-    forward("UserPromptSubmit", "thinking", { config, sessionId, cwd });
-    return next();
-  }, { global: true });
-
-  // ── tool before → working ──
+  // ── record tool calls (for approval bubble payload), observe for error ──
   ctx.on("tools/pre-execute", async (exec, next) => {
-    const { sessionId, cwd } = sessionOf(ctx, exec && exec.agent);
     if (exec && exec.callId) {
       toolCallCache.set(exec.callId, { name: exec.name, arguments: exec.arguments });
-      if (toolCallCache.size > 256) {
-        const first = toolCallCache.keys().next().value;
-        toolCallCache.delete(first);
-      }
+      if (toolCallCache.size > 256) toolCallCache.delete(toolCallCache.keys().next().value);
     }
-    forward("PreToolUse", "working", {
-      config,
-      sessionId,
-      cwd,
-      toolName: exec && exec.name,
-      toolUseId: exec && exec.callId,
-      toolInput: exec && exec.arguments,
-    });
-    // Permission is NOT decided here: when a tool needs approval, the harness
-    // asks the ApprovalService, whose answerer chain we join below. We just
-    // observe the tool started.
     return next();
   }, { global: true });
 
-  // ── tool after → working (or error on failure) ──
   ctx.on("tools/post-execute", async (exec, result, next) => {
-    const { sessionId, cwd } = sessionOf(ctx, exec && exec.agent);
     if (exec && exec.callId) toolCallCache.delete(exec.callId);
     const failed = !!(result && result.error);
-    forward(failed ? "PostToolUseFailure" : "PostToolUse", failed ? "error" : "working", {
-      config,
-      sessionId,
-      cwd,
-      toolName: exec && exec.name,
-      toolUseId: exec && exec.callId,
-      toolInput: exec && exec.arguments,
-    });
+    if (failed) {
+      const { sessionId, cwd } = sessionOf(exec && exec.agent);
+      forward("PostToolUseFailure", "error", { sessionId, cwd, toolName: exec && exec.name, toolUseId: exec && exec.callId });
+    }
     return next();
   }, { global: true });
 
-  // ── turn stopping → attention ──
-  ctx.on("agent/turn-stopping", async ({ agent, signal }) => {
-    const { sessionId, cwd } = sessionOf(ctx, agent);
-    forward("Stop", "attention", { config, sessionId, cwd });
-    void signal;
-  }, { global: true });
-
-  // ── subagents → juggling / working ──
-  ctx.on("subagent/start", (info) => {
-    const child = ctx.get("agents")?.get(info.id);
-    const { sessionId, cwd } = sessionOf(ctx, child);
-    forward("SubagentStart", "juggling", { config, sessionId, cwd });
-  }, { global: true });
-  ctx.on("subagent/end", (info) => {
-    const child = ctx.get("agents")?.get(info.id);
-    const { sessionId, cwd } = sessionOf(ctx, child);
-    forward("SubagentStop", "working", { config, sessionId, cwd });
-  }, { global: true });
-
-  // ── approval answerer (waterfall): Clawd bubble decides, else delegate ──
+  // ── approval answerer (waterfall), global + first ──
   if (approvalEnabled) {
     ctx.on("approval/request", async (req, next) => {
-      // Diagnostic: log that this answerer was actually reached, plus whether
-      // Clawd answered. Distinguishes "answerer not invoked (web answerer wins)"
-      // from "invoked but postPermission did not block".
-      try {
-        const port = await discoverClawdPort();
-        writeFileSync(APPROVAL_LOG,
-          `approval/request reached tool=${req && req.toolName} callId=${req && req.callId} clawdPort=${port || "none"}\n`,
-          { flag: "a" });
-      } catch {}
+      const toolName = (req && req.toolName) || "unknown";
+      if (HANDLED.has(toolName)) return "allowed-once"; // session-scoped Always
       const signal = req && req.signal;
-      const behavior = await postPermission(ctx, req, config, signal);
-      const outcome = toOutcome(behavior);
-      // Delegate when Clawd is unavailable / no-decision, so dsh's own
-      // approval UI (or another answerer) can answer instead of failing closed.
+      const decision = await postPermission(req, config, signal);
+      const outcome = decisionToOutcome(req, decision);
       if (!outcome) return next();
       return outcome;
+    }, { global: true, prepend: true });
+  }
+
+  // ── user-questions answerer (waterfall), global + first ──
+  if (questionsEnabled) {
+    ctx.on("user-questions/request", async (req, next) => {
+      const questions = (req && req.questions) || [];
+      if (questions.length === 0) return next();
+      const text = await requestElicitation(questions, req, config, req && req.signal);
+      const answers = parseElicitationAnswers(text, questions);
+      if (!answers) return next();
+      return { answers };
     }, { global: true, prepend: true });
   }
 }

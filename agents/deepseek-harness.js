@@ -1,12 +1,13 @@
 // DeepSeek Harness (dsh) agent configuration
-// Perception via a native DSH plugin (Cordis) that subscribes to harness
-// session/tool events and forwards them to Clawd over HTTP:
-//   - lifecycle + tool events  → POST /state
-//   - blocking permission ask  → POST /permission (bubble → decision)
-// The plugin ships under hooks/dsh-plugin/ and is registered into DSH's
-// plugin composition; dsh-hooks-(deepseek-harness)?-install.js manages that
-// registration. The internal PascalCase event vocabulary mirrors Claude Code
-// so state.js reuses the existing transition logic.
+// Perception via the Claude Code hook mechanism: dsh runs a Claude Code-format
+// COMMAND hook (hooks/clawd-dsh-hook.js) through its `dsh-hooks-claude-code`
+// bridge, so this is exactly how Clawd tracks Claude Code. The command hook
+// POSTs /state for the events the bridge supports; a native bridge plugin
+// (hooks/dsh-plugin/index.mjs) supplies the events the bridge does not run
+// (error / notification / sleeping / sweeping) plus blocking permission bubbles
+// (/permission) and elicitation (user-questions) answers.
+// The internal PascalCase event vocabulary mirrors Claude Code so state.js
+// reuses the existing transition logic.
 
 module.exports = {
   id: "deepseek-harness",
@@ -20,11 +21,9 @@ module.exports = {
     mac: ["dsh", "node"],
     linux: ["dsh", "node"],
   },
-  eventSource: "plugin-event",
-  // Clawd-internal event names (PascalCase). The native plugin translates
-  // DSH's session-event vocabulary (turn/start, user/message, tool/call,
-  // tool/result, turn/end, ...) into these shared names. Reusing the Claude
-  // Code vocabulary lets state.js reuse the existing transition/release logic.
+  eventSource: "hook",
+  // Clawd-internal event names (PascalCase). The command hook maps the
+  // bridge-supported events to these; the native plugin maps the rest.
   eventMap: {
     SessionStart: "idle",
     SessionEnd: "sleeping",
@@ -39,9 +38,9 @@ module.exports = {
     PreCompact: "sweeping",
     PostCompact: "attention",
     Notification: "notification",
-    // PermissionRequest rides the parallel /permission channel (the plugin
-    // POSTs there and holds the connection until the bubble answers), not
-    // the /state eventMap — mirroring Claude Code.
+    // PermissionRequest + elicitation ride the parallel /permission channel
+    // (the plugin POSTs there and holds the connection until the bubble
+    // answers), not the /state eventMap — mirroring Claude Code.
   },
   capabilities: {
     // The plugin holds a blocking HTTP request to Clawd's /permission for the
@@ -53,5 +52,9 @@ module.exports = {
     sessionEnd: true,
     subagent: true,
   },
+  hookConfig: {
+    configFormat: "dsh-claude-code-hooks-json",
+  },
   pidField: "dsh_pid",
 };
+

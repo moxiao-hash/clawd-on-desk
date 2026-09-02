@@ -204,8 +204,8 @@ describe("Agent Registry", () => {
     assert.strictEqual(hermes.capabilities.subagent, false);
 
     const dsh = registry.getAgent("deepseek-harness");
-    // Blocking HTTP permission (like Claude Code) + plugin event source.
-    assert.strictEqual(dsh.eventSource, "plugin-event");
+    // Claude Code hook mechanism (dsh-hooks-claude-code bridge) + blocking HTTP permission.
+    assert.strictEqual(dsh.eventSource, "hook");
     assert.strictEqual(dsh.capabilities.httpHook, true);
     assert.strictEqual(dsh.capabilities.permissionApproval, true);
     assert.strictEqual(dsh.capabilities.interactiveBubble, true);
@@ -266,7 +266,7 @@ describe("Agent Registry", () => {
 
     const dsh = registry.getAgent("deepseek-harness");
     // Reuses the Claude Code PascalCase vocabulary for state transition reuse.
-    assert.strictEqual(dsh.eventSource, "plugin-event");
+    assert.strictEqual(dsh.eventSource, "hook");
     assert.strictEqual(dsh.eventMap.SessionStart, "idle");
     assert.strictEqual(dsh.eventMap.UserPromptSubmit, "thinking");
     assert.strictEqual(dsh.eventMap.PreToolUse, "working");

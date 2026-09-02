@@ -1,20 +1,23 @@
 #!/usr/bin/env node
-// Register Clawd's DeepSeek Harness (dsh) bridge plugin into the user's dsh
+// Register Clawd's DeepSeek Harness (dsh) integration into the user's dsh
 // plugin composition.
 //
-// Strategy: dsh loads user plugins via Cordis patch overlays. A plugin is a
-// normal Cordis module addressed by `name`, which the loader resolves as a
-// package specifier, a `file://` URL, or a base-URL-relative path (see
-// vendor/loader/src/config/tree.ts). Clawd ships the bridge as a ZERO-DEPENDENCY
-// ESM module (hooks/dsh-plugin/index.mjs) that only uses node builtins + fetch,
-// so it can be imported directly by `file://` URL without touching node_modules.
+// dsh runs Claude Code-format COMMAND hooks through its `dsh-hooks-claude-code`
+// bridge, so the "Claude Code scheme" works as-is: we ship a command hook
+// script (clawd-dsh-hook.js), generate a Claude Code hooks.json that wires the
+// supported events to it, and mount the bridge in the dsh profile patch layer
+// pointing `configPath` at that hooks.json. The bridge then runs our hook at the
+// matching moments → POST /state.
+//
+// Events the bridge does not run (error / notification / sleeping / sweeping)
+// plus approval and user-questions are handled by the native bridge plugin
+// (hooks/dsh-plugin/index.mjs), mounted here too as a `file://` plugin.
 //
 // This installer:
-//   1. Writes a ready-to-use patch overlay `$DSH_HOME/clawd-on-desk.cordis.yml`
-//      the user can enable with `dsh web --patch <that file>`.
-//   2. Best-effort merges the same `insert` into the user patch layer
-//      `$DSH_HOME/cordis.patch.yml` (every profile) so it stays enabled across
-//      runs. The merge is idempotent and never clobbers unrelated patches.
+//   1. Writes hooks.json (command hooks → clawd-dsh-hook.js) to $DSH_HOME/clawd/.
+//   2. Writes a ready-to-use patch overlay `$DSH_HOME/clawd-on-desk.cordis.yml`.
+//   3. Merges the same `insert` into the PROFILE user patch layer
+//      (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`) and the GLOBAL layer.
 //
 // DSH HOME = $DSH_HOME, else ~/.dsh. Missing home => skipped (dsh not installed).
 
@@ -23,10 +26,15 @@ const os = require("os");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const { asarUnpackedPath } = require("./json-utils");
+const { resolveNodeBin } = require("./server-config");
 
 const PLUGIN_DIR_NAME = "dsh-plugin";
 const PLUGIN_ENTRY = "index.mjs";
 const PLUGIN_ID = "clawd-on-desk";
+const BRIDGE_PLUGIN_ID = "dsh-hooks-claude-code";
+const BRIDGE_PLUGIN_NAME = "@deepseek-ai/dsh-hooks-claude-code";
+const HOOK_SCRIPT_NAME = "clawd-dsh-hook.js";
+const HOOKS_FILENAME = "dsh-hooks.json";
 const PATCH_FILENAME = "clawd-on-desk.cordis.yml";
 const PATCH_LAYER = "cordis.patch.yml";
 // `dsh web` reads the PROFILE-LEVEL user patch layer
@@ -48,6 +56,11 @@ function resolvePluginFileUrl(baseDir) {
   return pathToFileURL(entry).href;
 }
 
+/** Absolute path to the command hook script the dsh bridge will run. */
+function resolveHookScriptPath(baseDir) {
+  return asarUnpackedPath(path.resolve(baseDir || __dirname, HOOK_SCRIPT_NAME));
+}
+
 function resolveDshHome(options = {}) {
   if (options.dshHome) return options.dshHome;
   const env = options.env || process.env;
@@ -56,17 +69,58 @@ function resolveDshHome(options = {}) {
 }
 
 /**
- * Build the patch overlay body (a list containing our `insert` slice).
- * `name` is a `file://` URL to the plugin entry; single-quoted for YAML safety.
+ * Build a Claude Code hooks.json that wires the bridge-supported events to the
+ * command hook script. The dsh bridge runs only these command hooks; the
+ * missing events are covered by the native plugin.
  */
-function buildPatchBody(pluginFileUrl) {
-  const quoted = JSON.stringify(pluginFileUrl); // double-quoted JSON is valid YAML
+function buildHooksJson(hookScriptPath, nodeBin) {
+  const events = [
+    "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
+    "Stop", "SubagentStart", "SubagentStop",
+  ];
+  const hooks = {};
+  for (const event of events) {
+    hooks[event] = [{
+      matcher: "",
+      hooks: [{ type: "command", command: `"${nodeBin}" "${hookScriptPath}" ${event}` }],
+    }];
+  }
+  return { hooks };
+}
+
+/** Default directory where Clawd writes the dsh hooks.json (inside $DSH_HOME/clawd). */
+function hooksJsonPath(dshHome) {
+  return path.join(dshHome, "clawd", HOOKS_FILENAME);
+}
+
+/** Write the hooks.json (idempotent). Returns the absolute path. */
+function writeHooksJson(dshHome, hookScriptPath, nodeBin, options = {}) {
+  const hooksPath = options.hooksPath || hooksJsonPath(dshHome);
+  fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
+  fs.writeFileSync(hooksPath, JSON.stringify(buildHooksJson(hookScriptPath, nodeBin), null, 2), "utf8");
+  return hooksPath;
+}
+
+/**
+ * Build the patch overlay body: a list with an `insert` slice mounting BOTH
+ * plugins — the dsh bridge (runs our command hooks) and our native bridge
+ * plugin (supplements error/notification/sleeping/sweeping + approval +
+ * user-questions).
+ */
+function buildPatchBody(hooksJsonPath, pluginFileUrl) {
+  const bridgeName = JSON.stringify(BRIDGE_PLUGIN_NAME); // double-quoted JSON is valid YAML
+  const pluginName = JSON.stringify(pluginFileUrl);
+  const configPathYaml = JSON.stringify(hooksJsonPath);
   return [
     "# Generated by Clawd on Desk. Do not edit the block between the markers.",
     "# Enable with: dsh web --patch " + path.join("$DSH_HOME", PATCH_FILENAME),
     `- insert:`,
+    `    - id: ${BRIDGE_PLUGIN_ID}`,
+    `      name: ${bridgeName}`,
+    `      config:`,
+    `        configPath: ${configPathYaml}`,
     `    - id: ${PLUGIN_ID}`,
-    `      name: ${quoted}`,
+    `      name: ${pluginName}`,
     `      config:`,
     `        events: true`,
     `        approval: true`,
@@ -74,9 +128,10 @@ function buildPatchBody(pluginFileUrl) {
   ].join("\n");
 }
 
-/** Whether the user patch layer already contains our plugin id. */
+/** Whether the user patch layer already contains our plugin id(s). */
 function layerHasPlugin(text) {
-  return typeof text === "string" && text.includes(`id: ${PLUGIN_ID}`);
+  return typeof text === "string"
+    && (text.includes(`id: ${PLUGIN_ID}`) || text.includes(`id: ${BRIDGE_PLUGIN_ID}`));
 }
 
 /** Drop YAML comment lines and whitespace, leaving only structure. */
@@ -91,20 +146,18 @@ function stripYamlComments(text) {
 /**
  * Merge our insert slice into an existing patch-layer file. A dsh patch layer
  * is a top-level YAML list; a fresh profile layer is `[]` (often under a
- * comment header), so we must REPLACE that empty list, not append a stray
- * `- insert:` after it — `[]\n- insert:…` is not a valid list. Handles:
+ * comment header), so we must REPLACE that empty list. Handles:
  *   - empty / comment-only / `[]` → replace with our list
  *   - an existing list          → append our `- insert:` as a new item
  *   - already contains our id   → no-op
  */
-function mergeIntoPatchLayer(existingText, pluginFileUrl) {
+function mergeIntoPatchLayer(existingText, hooksJsonPath, pluginFileUrl) {
   if (layerHasPlugin(existingText)) {
     return { text: existingText, changed: false, added: false, updated: false };
   }
-  const block = buildPatchBody(pluginFileUrl);
+  const block = buildPatchBody(hooksJsonPath, pluginFileUrl);
   const stripped = stripYamlComments(existingText);
   if (stripped === "" || stripped === "[]" || stripped === "[ ]" || stripped === "[]\n") {
-    // Empty list (legitimately `[]` or comment header + `[]`) — replace it.
     return { text: block, changed: true, added: true, updated: false };
   }
   const trimmed = (existingText || "").trimEnd();
@@ -112,13 +165,13 @@ function mergeIntoPatchLayer(existingText, pluginFileUrl) {
   return { text, changed: true, added: true, updated: false };
 }
 
-function writePatchLayer(dshHome, pluginFileUrl, options = {}) {
+function writePatchLayer(dshHome, hooksJsonPath, pluginFileUrl, options = {}) {
   const patchPath = options.patchPath || path.join(dshHome, PATCH_LAYER);
   let existing = "";
   try {
     existing = fs.readFileSync(patchPath, "utf8");
   } catch {}
-  const merged = mergeIntoPatchLayer(existing, pluginFileUrl);
+  const merged = mergeIntoPatchLayer(existing, hooksJsonPath, pluginFileUrl);
   if (merged.changed) {
     fs.mkdirSync(path.dirname(patchPath), { recursive: true });
     fs.writeFileSync(patchPath, merged.text, "utf8");
@@ -127,67 +180,76 @@ function writePatchLayer(dshHome, pluginFileUrl, options = {}) {
 }
 
 /** Write the PROFILE-level user patch layer dsh actually reads (e.g. web). */
-function writeProfilePatchLayer(dshHome, profile, pluginFileUrl) {
+function writeProfilePatchLayer(dshHome, profile, hooksJsonPath, pluginFileUrl) {
   const patchPath = path.join(dshHome, "profiles", profile, PATCH_LAYER);
-  return writePatchLayer(dshHome, pluginFileUrl, { patchPath });
+  return writePatchLayer(dshHome, hooksJsonPath, pluginFileUrl, { patchPath });
 }
 
 /**
- * Register the Clawd dsh bridge.
+ * Register the Clawd dsh integration (command hooks + native bridge plugin).
  *
  * @param {object} [options]
- * @param {boolean} [options.silent]   suppress console output
- * @param {string}  [options.dshHome]  override dsh home (for tests)
+ * @param {boolean} [options.silent]    suppress console output
+ * @param {string}  [options.dshHome]   override dsh home (for tests)
  * @param {string}  [options.patchPath] override user patch-layer path (for tests)
- * @param {string}  [options.baseDir]  override plugin dir base (for tests)
- * @param {string}  [options.env]      env override (for tests)
- * @returns {{ status: string, added: boolean, updated: boolean, dshHome: string, patchPath: string, pluginFile: string, reason?: string }}
+ * @param {string}  [options.hooksPath] override hooks.json path (for tests)
+ * @param {string}  [options.profile]   dsh profile name (default: web)
+ * @param {string}  [options.baseDir]   override hooks dir base (for tests)
+ * @param {string}  [options.nodeBin]   override node binary (for tests)
+ * @param {string}  [options.env]       env override (for tests)
+ * @returns {{ status: string, added: boolean, updated: boolean, dshHome: string, profile: string, patchPath: string, globalPatchPath: string, hooksPath: string, pluginFile: string, overlayPath: string, reason?: string }}
  */
 function registerDshBridge(options = {}) {
   const dshHome = resolveDshHome(options);
   const pluginFile = resolvePluginFileUrl(options.baseDir);
+  const hookScript = resolveHookScriptPath(options.baseDir);
+  const nodeBin = options.nodeBin || resolveNodeBin() || "node";
 
-  // Skip if the dsh home doesn't exist (dsh not installed). This check runs
-  // regardless of whether `dshHome` was passed by a caller, so a stale override
-  // pointing at a missing directory still reports `skipped` rather than
-  // creating a fresh home. `forceCreate` opts out for callers that own the dir.
   let homeExists = true;
   if (options.forceCreate !== true) {
     try { homeExists = fs.statSync(dshHome).isDirectory(); } catch { homeExists = false; }
   }
   if (!homeExists) {
     if (!options.silent) {
-      console.log(`Clawd: ${dshHome} not found — skipping DeepSeek Harness bridge registration`);
+      console.log(`Clawd: ${dshHome} not found — skipping DeepSeek Harness integration registration`);
     }
     return {
       status: "skipped",
       added: false,
       updated: false,
       dshHome,
+      profile: options.profile || DEFAULT_PROFILE,
       patchPath: path.join(dshHome, PATCH_LAYER),
+      globalPatchPath: path.join(dshHome, PATCH_LAYER),
+      hooksPath: hooksJsonPath(dshHome),
       pluginFile,
+      overlayPath: path.join(dshHome, PATCH_FILENAME),
       reason: "dsh-home-not-found",
     };
   }
 
-  // Always write the standalone `--patch` overlay (idempotent).
+  // 1) Write the Claude Code hooks.json the bridge will read.
+  const hooksPath = writeHooksJson(dshHome, hookScript, nodeBin, options);
+
+  // 2) Always write the standalone `--patch` overlay (idempotent).
   const overlayPath = path.join(dshHome, PATCH_FILENAME);
   fs.mkdirSync(dshHome, { recursive: true });
-  fs.writeFileSync(overlayPath, buildPatchBody(pluginFile), "utf8");
+  fs.writeFileSync(overlayPath, buildPatchBody(hooksPath, pluginFile), "utf8");
 
-  // `dsh web` reads the PROFILE-level user patch layer, so that is the one that
-  // must carry the plugin for the running surface. We still merge the global
-  // layer too, so a non-web profile that consults it also picks the plugin up.
+  // 3) Merge into the PROFILE user patch layer (the one dsh web actually reads).
+  //    Only touch the home-layer (global) when explicitly asked (writeGlobal: true),
+  //    so we don't create a duplicate loader entry id that dsh rejects at boot.
   const profile = options.profile || DEFAULT_PROFILE;
-  const profileLayer = writeProfilePatchLayer(dshHome, profile, pluginFile);
-  const layer = writePatchLayer(dshHome, pluginFile, options);
+  const profileLayer = writeProfilePatchLayer(dshHome, profile, hooksPath, pluginFile);
+  const layer = options.writeGlobal
+    ? writePatchLayer(dshHome, hooksPath, pluginFile, options)
+    : { patchPath: path.join(dshHome, PATCH_LAYER), added: false, updated: false };
 
   if (!options.silent) {
-    console.log(`Clawd DeepSeek Harness bridge → ${overlayPath}`);
+    console.log(`Clawd DeepSeek Harness integration → ${overlayPath}`);
+    console.log(`  hooks.json: ${hooksPath}`);
     console.log(`  profile="${profile}" layer: ${profileLayer.patchPath} (added=${profileLayer.added})`);
-    if (layer.added) console.log(`  Global layer: ${layer.patchPath} (added)`);
-    else if (layer.updated) console.log(`  Global layer: ${layer.patchPath} (updated)`);
-    else console.log(`  Global layer: ${layer.patchPath} (already present)`);
+    if (options.writeGlobal) console.log(`  Global layer: ${layer.patchPath} (added=${layer.added}, updated=${layer.updated})`);
     console.log(`  Enable with: dsh web --patch ${overlayPath}`);
   }
 
@@ -199,8 +261,9 @@ function registerDshBridge(options = {}) {
     profile,
     patchPath: profileLayer.patchPath,
     globalPatchPath: layer.patchPath,
-    overlayPath,
+    hooksPath,
     pluginFile,
+    overlayPath,
   };
 }
 
@@ -210,15 +273,23 @@ module.exports = {
   DEFAULT_PROFILE,
   PLUGIN_DIR_NAME,
   PLUGIN_ID,
+  BRIDGE_PLUGIN_ID,
+  BRIDGE_PLUGIN_NAME,
+  HOOK_SCRIPT_NAME,
+  HOOKS_FILENAME,
+  buildHooksJson,
   buildPatchBody,
   stripYamlComments,
   layerHasPlugin,
   mergeIntoPatchLayer,
   registerDshBridge,
   resolveDshHome,
+  resolveHookScriptPath,
   resolvePluginDir,
   resolvePluginEntry,
   resolvePluginFileUrl,
+  hooksJsonPath,
+  writeHooksJson,
   writePatchLayer,
   writeProfilePatchLayer,
 };
