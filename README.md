@@ -37,6 +37,12 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 >
 > 本仓库 fork 自 **原开源仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)**。以下为相对上游**新增 / 改动**的内容（重点突出）：
 >
+> ### 🎵 音乐软件适配（音乐响起时跳舞）
+> 检测 macOS 上的音乐软件播放音频，桌宠跟着"跳舞"（切换为杂耍 `juggling` 动画）：
+> - `src/music-dance.js`：通过 `pmset -g assertions` 监控系统音频，沿进程树匹配配置的音乐软件；播放时切到 `juggling`（起舞）状态，停止后恢复。
+> - `src/prefs.js`：`musicDanceEnabled`（开关）+ `musicAppNames`（音乐软件进程名列表，默认 QQ音乐 / 网易云 Music / Spotify）。
+> - `src/main.js`：启动音乐跳舞监控；设置里的「音乐舞动」可配置。
+>
 > ### 🆕 DeepSeek Harness (`dsh`) agent 集成（主要新增）
 > 让 Clawd 实时感知 **DeepSeek Harness** 的工作状态，采用与 Claude Code **完全一致的 hook 机制**：
 > - `hooks/clawd-dsh-hook.js`：由 DSH 内置 `dsh-hooks-claude-code` 桥接运行的 command hook，上报 `idle / thinking / working / attention / juggling`。
