@@ -29,6 +29,8 @@
 
 > # 本仓库说明
 >
+> 🔗 **原开源仓库（跳转）：[rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)**
+>
 > 本仓库是 **[rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)** 的一个 fork（改动分支）。
 > **本仓库大部分源码来自上游开源仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)。**
 >
