@@ -1,4 +1,5 @@
 const { formatDetail, truncate } = window.ClawdBubbleFormat;
+const { renderMarkdown } = window.ClawdMarkdown;
 const card = document.getElementById("card");
 const toolPill = document.getElementById("toolPill");
 const toolPillText = document.getElementById("toolPillText");
@@ -454,16 +455,22 @@ function createElicitationQuestionCard(question, questionIndex) {
   text.textContent = question.question || "";
   questionCard.appendChild(text);
 
-  // Render the plan/content detail (e.g. a plan-review plan or an elicitation
-  // "Other" prompt) above the options, as pre-wrap so multi-line markdown /
-  // plan text is readable instead of being collapsed into one line.
+  // Render the plan/content detail (e.g. a plan-review plan) in its own
+  // scrollable box, with the markdown rendered (escaped) via the shared module.
   if (typeof question.detail === "string" && question.detail.trim()) {
     const detail = document.createElement("div");
     detail.className = "question-detail";
-    detail.style.whiteSpace = "pre-wrap";
-    detail.style.maxHeight = "160px";
+    detail.style.maxHeight = "220px";
     detail.style.overflowY = "auto";
-    detail.textContent = question.detail;
+    detail.style.border = "1px solid rgba(128,128,128,.35)";
+    detail.style.borderRadius = "8px";
+    detail.style.padding = "8px 10px";
+    detail.style.margin = "4px 0 6px";
+    detail.style.fontSize = "12px";
+    detail.innerHTML = renderMarkdown(question.detail);
+    detail.querySelectorAll("code, pre").forEach((el) => {
+      el.style.whiteSpace = "pre-wrap";
+    });
     questionCard.appendChild(detail);
   }
 
