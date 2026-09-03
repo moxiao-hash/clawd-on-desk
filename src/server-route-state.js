@@ -145,14 +145,15 @@ function handleStatePost(req, res, options) {
             allowSingletonFallback: event === "Stop",
           });
           if (perm) ctx.resolvePermissionEntry(perm, "deny", "User answered in terminal");
-          // Stale elicitation sweep: AskUserQuestion is a blocking tool
-          // call, so any forward progress in the same session means the
-          // user already answered in the terminal.  The exact-match above
-          // may miss the elicitation entry when the /state PostToolUse
-          // carries a different tool_input fingerprint from the original
-          // /permission request, or when tool_use_id is absent.
+          // Stale elicitation sweep: AskUserQuestion is a blocking tool call, so
+          // forward progress on THAT tool call means the user already answered.
+          // Only clear the elicitation whose own tool call matches this /state
+          // event (by toolUseId) — a sibling agent's PostToolUse/Stop in the
+          // same session must not blow away a pending elicitation.
           for (const stale of [...ctx.pendingPermissions]) {
-            if (stale !== perm && stale.isElicitation && stale.res && stale.sessionId === sid) {
+            if (stale !== perm && stale.isElicitation && stale.res
+                && stale.sessionId === sid
+                && stale.toolUseId && stale.toolUseId === toolUseId) {
               ctx.resolvePermissionEntry(stale, "deny", "User answered in terminal");
             }
           }
