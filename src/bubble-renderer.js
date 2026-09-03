@@ -454,6 +454,19 @@ function createElicitationQuestionCard(question, questionIndex) {
   text.textContent = question.question || "";
   questionCard.appendChild(text);
 
+  // Render the plan/content detail (e.g. a plan-review plan or an elicitation
+  // "Other" prompt) above the options, as pre-wrap so multi-line markdown /
+  // plan text is readable instead of being collapsed into one line.
+  if (typeof question.detail === "string" && question.detail.trim()) {
+    const detail = document.createElement("div");
+    detail.className = "question-detail";
+    detail.style.whiteSpace = "pre-wrap";
+    detail.style.maxHeight = "160px";
+    detail.style.overflowY = "auto";
+    detail.textContent = question.detail;
+    questionCard.appendChild(detail);
+  }
+
   const hint = document.createElement("div");
   hint.className = "question-hint";
   hint.textContent = question.multiSelect
