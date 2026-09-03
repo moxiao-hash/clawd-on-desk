@@ -179,7 +179,14 @@ function findPendingPermissionForStateEvent(pendingPermissions, options) {
   }
 
   const allowSingletonFallback = options.allowSingletonFallback === true;
-  return allowSingletonFallback && sessionPending.length === 1 ? sessionPending[0] : null;
+  // Never let a /state Stop singleton-fallback resolve an ELICITATION as "user
+  // answered in terminal": elicitation waits for the user's explicit choice in
+  // the bubble, so a sibling agent's Stop event in the same session must not
+  // blow it away.
+  return allowSingletonFallback && sessionPending.length === 1
+    && !sessionPending[0].isElicitation
+    ? sessionPending[0]
+    : null;
 }
 
 module.exports = {

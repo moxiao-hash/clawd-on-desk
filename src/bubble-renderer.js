@@ -1,5 +1,9 @@
 const { formatDetail, truncate } = window.ClawdBubbleFormat;
-const { renderMarkdown } = window.ClawdMarkdown;
+// Reusable markdown renderer; fall back to escaped text + <br> if the shared
+// module is ever unavailable, so a missing window.ClawdMarkdown cannot break
+// the whole bubble renderer (which would fall back to a deny on elicitation).
+const renderMarkdown = (window.ClawdMarkdown && window.ClawdMarkdown.renderMarkdown)
+  || ((text) => (typeof text === "string" ? text.replace(/</g, "&lt;").replace(/\r?\n/g, "<br>") : ""));
 const card = document.getElementById("card");
 const toolPill = document.getElementById("toolPill");
 const toolPillText = document.getElementById("toolPillText");
