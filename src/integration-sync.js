@@ -282,6 +282,18 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncZCodeHooks() {
+    try {
+      if (typeof ctx.syncZCodeHooksImpl === "function") return ctx.syncZCodeHooksImpl();
+      const { installZCodeHooks } = require("../hooks/zcode-install.js");
+      const result = installZCodeHooks();
+      return result && typeof result === "object" ? result : { status: "ok" };
+    } catch (err) {
+      console.warn("Clawd: failed to sync ZCode hooks:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync ZCode hooks" };
+    }
+  }
+
   const AGENT_INTEGRATION_SYNCERS = Object.freeze({
     "gemini-cli": syncGeminiHooks,
     "antigravity-cli": syncAntigravityHooks,
@@ -295,6 +307,7 @@ function createIntegrationSyncRuntime(options = {}) {
     openclaw: syncOpenClawPlugin,
     hermes: syncHermesPlugin,
     "deepseek-harness": syncDeepSeekHarnessBridge,
+    zcode: syncZCodeHooks,
   });
 
   const AGENT_INTEGRATION_REPAIRERS = Object.freeze({

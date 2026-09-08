@@ -13,6 +13,8 @@ const AGENT_LABELS = {
   codebuddy: "CodeBuddy",
   pi: "Pi",
   openclaw: "OpenClaw",
+  "deepseek-harness": "DeepSeek Harness",
+  zcode: "ZCode",
 };
 
 let snapshot = { sessions: [], groups: [], orderedIds: [] };

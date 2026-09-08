@@ -21,6 +21,7 @@ describe("Agent Registry", () => {
       "openclaw",
       "hermes",
       "deepseek-harness",
+      "zcode",
     ]);
   });
 

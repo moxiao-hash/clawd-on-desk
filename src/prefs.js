@@ -169,6 +169,7 @@ const SCHEMA = {
       "openclaw": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
       "hermes": { enabled: true },
       "deepseek-harness": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      "zcode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },

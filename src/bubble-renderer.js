@@ -810,18 +810,48 @@ function show(data) {
     ? bubbleText(data.lang, "planReview")
     : bubbleText(data.lang, "permissionRequest");
   toolPill.style.display = isPlanReview ? "none" : "";
-  btnDeny.style.display = isPlanReview ? "none" : "";
+  btnDeny.style.display = "";
 
   // Tool pill
   toolPillText.textContent = data.toolName || "Unknown";
   toolPill.setAttribute("data-tool", data.toolName || "");
 
-  // Command block (textContent only — never innerHTML)
-  commandBlock.textContent = formatDetail(data.toolName, data.toolInput, { isAntigravity: !!data.isAntigravity });
+  // Plan Review detail vs standard Command block
+  let planDetailEl = document.getElementById("planReviewDetail");
+  if (isPlanReview && data.toolInput && typeof data.toolInput.plan === "string" && data.toolInput.plan.trim()) {
+    commandBlock.style.display = "none";
+    if (!planDetailEl) {
+      planDetailEl = document.createElement("div");
+      planDetailEl.id = "planReviewDetail";
+      planDetailEl.className = "question-detail";
+      planDetailEl.style.maxHeight = "240px";
+      planDetailEl.style.overflowY = "auto";
+      planDetailEl.style.border = "1px solid rgba(128,128,128,.35)";
+      planDetailEl.style.borderRadius = "8px";
+      planDetailEl.style.padding = "8px 10px";
+      planDetailEl.style.margin = "4px 0 6px";
+      planDetailEl.style.fontSize = "12px";
+      commandBlock.parentNode.insertBefore(planDetailEl, commandBlock);
+    }
+    planDetailEl.style.display = "";
+    planDetailEl.innerHTML = renderMarkdown(data.toolInput.plan);
+    planDetailEl.querySelectorAll("code, pre").forEach((el) => {
+      el.style.whiteSpace = "pre-wrap";
+    });
+  } else {
+    if (planDetailEl) planDetailEl.style.display = "none";
+    commandBlock.style.display = "";
+    commandBlock.textContent = formatDetail(data.toolName, data.toolInput, { isAntigravity: !!data.isAntigravity });
+  }
 
   // Button labels
-  btnAllow.textContent = isPlanReview ? bubbleText(data.lang, "approve") : bubbleText(data.lang, "allow");
-  btnDeny.textContent = isPlanReview ? bubbleText(data.lang, "reject") : bubbleText(data.lang, "deny");
+  if (isPlanReview) {
+    btnAllow.textContent = (data.lang && data.lang.startsWith("zh")) ? "是 (批准)" : bubbleText(data.lang, "approve");
+    btnDeny.textContent = (data.lang && data.lang.startsWith("zh")) ? "否 (拒绝)" : bubbleText(data.lang, "reject");
+  } else {
+    btnAllow.textContent = bubbleText(data.lang, "allow");
+    btnDeny.textContent = bubbleText(data.lang, "deny");
+  }
 
   // Dynamic suggestion buttons
   suggestionsContainer.innerHTML = "";

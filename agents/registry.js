@@ -15,6 +15,7 @@ const pi = require("./pi");
 const openclaw = require("./openclaw");
 const hermes = require("./hermes");
 const deepseekHarness = require("./deepseek-harness");
+const zcode = require("./zcode");
 
 const AGENTS = [
   claudeCode,
@@ -31,6 +32,7 @@ const AGENTS = [
   openclaw,
   hermes,
   deepseekHarness,
+  zcode,
 ];
 const AGENT_MAP = new Map(AGENTS.map((a) => [a.id, a]));
 
