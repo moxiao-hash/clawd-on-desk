@@ -49,16 +49,22 @@
 > - `hooks/dsh-install.js`：安装器，生成 Claude Code 格式 `hooks.json` 并挂载 dsh profile 补丁层（双插件）。
 > - 注册与接线：`agents/deepseek-harness.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js`、`src/state.js`、doctor 描述符、`assets/icons/agents/deepseek-harness.png`。
 > - 详见 [docs/guides/deepseek-harness-integration.md](docs/guides/deepseek-harness-integration.md)。
-
-> ## 🆕 MiniMax Code / Mavis agent 集成
-> 全面适配 **MiniMax Code (Mavis Agent)** 本地插件规范与生命周期：
-> - **标准本地插件与 Hook 架构**：严格遵循 MiniMax Code 本地插件规范（`local-plugin-v1` / `local-plugin-hooks`），支持安装至 `~/.minimax/plugins/clawd-mavis/`，自动注册完整事件监听（`PreToolUse`、`PostToolUse`、`PermissionRequest`、`Stop`、`SessionStart` 等）。
-> - **双向交互气泡与决策闭环**：桌宠气泡可截获 Mavis 的工具执行审批、无害选择题（`ask_user`）以及计划模式提问，支持直接在桌宠气泡上点击选择/授权并实时回传 IPC 决策。
-> - **生动动作反馈（对齐 ZCode 体验）**：
->   - `PostToolUse` 状态保持为 `working`，长轮次连续多步骤执行时持续敲击键盘，避免频繁闪切。
->   - 轮次结束 `Stop` 状态触发 `attention` 挥手/致意庆祝动作，提供即时完工反馈。
-> - **官方高清图标**：Dashboard 与 Session HUD 原生集成 MiniMax 官方图标（`assets/icons/agents/mavis.png`），自动识别会话并清晰展示。
-> - **安装与注册**：提供一键安装脚本 `hooks/mavis-install.js`，包含自包含依赖同步与安全卸载；接线包含 `agents/mavis.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js` 及对应单测。
+>
+> ## 🆕 ZCode (`zcode`) agent 集成
+> 让 Clawd 实时感知 **ZCode** 的工作状态与交互链路，深度对齐 Claude Code 与 Codex 机制：
+> - `hooks/zcode-hook.js`：响应 7 大核心事件（`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`ExitPlanMode`、`AskUserQuestion`、`PermissionRequest`、`Stop`），上报 `idle / thinking / working / attention / notification / error`。
+> - **双向交互气泡与决策闭环**：截获敏感工具权限审批（`PermissionRequest`）、单选/多选/打字交互问答（`AskUserQuestion`）及计划模式富文本 Markdown 预览与批准（`ExitPlanMode`），支持直接在桌宠气泡上点击选择/决策并回传。
+> - `hooks/zcode-install.js`：安装器，自动配置 `~/.zcode/cli/config.json` 写入标准事件钩子，支持一键安装与安全卸载。
+> - 注册与接线：`agents/zcode.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js`、`src/dashboard-renderer.js`、doctor 描述符、`assets/icons/agents/zcode.png`（从官方应用提取的高清图标）。
+> - 详见 [docs/guides/zcode-integration.md](docs/guides/zcode-integration.md)。
+>
+> ## 🆕 MiniMax Code / Mavis (`mavis`) agent 集成
+> 全面适配 **MiniMax Code (Mavis Agent)** 本地插件规范（`local-plugin-v1`）与生命周期交互：
+> - `hooks/mavis-hook.js`：基于本地插件规范挂载的事件钩子，上报 `idle / thinking / working / attention / notification / error / sweeping`；对齐 ZCode 生动体验（多步工具调用持续敲击键盘 `working`、轮次完成挥手致意 `attention`）。
+> - **双向交互气泡与决策闭环**：截获命令执行与文件写操作等危险审批（`PermissionRequest`）及 `ask_user` 单选/问询交互气泡，支持直接在桌宠气泡中点击决策并实时回传。
+> - `hooks/mavis-install.js`：安装器，一键部署至 `~/.minimax/plugins/clawd-mavis/`，自动生成 `plugin.json` 与 `hooks.json`，支持依赖自愈同步与安全卸载。
+> - 注册与接线：`agents/mavis.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js`、`src/dashboard-renderer.js`、doctor 描述符、`assets/icons/agents/mavis.png`（官方透明高清图标）。
+> - 详见 [docs/guides/mavis-integration.md](docs/guides/mavis-integration.md)。
 
 > ## 🆕 `allowHeadlessPermissions`（headless 会话权限气泡）
 > `src/main.js` + `src/server-route-permission.js` + `src/prefs.js`：允许 headless 会话触发权限气泡（默认关闭），供远程 / 无头场景使用。
