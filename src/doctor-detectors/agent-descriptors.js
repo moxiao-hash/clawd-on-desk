@@ -16,6 +16,7 @@ const pi = require("../../hooks/pi-install");
 const openclaw = require("../../hooks/openclaw-install");
 const hermes = require("../../hooks/hermes-install");
 const dsh = require("../../hooks/dsh-install");
+const mavis = require("../../hooks/mavis-install");
 
 function agentName(agentId) {
   const agent = getAgent(agentId);
@@ -191,6 +192,17 @@ const AGENT_DESCRIPTORS = Object.freeze([
     pluginId: dsh.PLUGIN_ID,
     detection: "dsh-plugin",
     pluginEntry: path.join(__dirname, "..", "..", "hooks", dsh.PLUGIN_DIR_NAME, "index.mjs"),
+  }),
+  Object.freeze({
+    agentId: "mavis",
+    agentName: agentName("mavis"),
+    eventSource: agentEventSource("mavis"),
+    parentDir: mavis.resolveMinimaxHome(),
+    configPath: mavis.resolvePluginDir(),
+    configMode: "plugin-dir",
+    autoInstall: true,
+    marker: mavis.PLUGIN_DIR_NAME,
+    scriptPath: path.join(__dirname, "..", "..", "hooks", "mavis-hook.js"),
   }),
 ]);
 

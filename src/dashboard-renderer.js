@@ -15,6 +15,7 @@ const AGENT_LABELS = {
   openclaw: "OpenClaw",
   "deepseek-harness": "DeepSeek Harness",
   zcode: "ZCode",
+  mavis: "Mavis",
 };
 
 let snapshot = { sessions: [], groups: [], orderedIds: [] };

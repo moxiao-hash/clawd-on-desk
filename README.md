@@ -50,5 +50,15 @@
 > - 注册与接线：`agents/deepseek-harness.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js`、`src/state.js`、doctor 描述符、`assets/icons/agents/deepseek-harness.png`。
 > - 详见 [docs/guides/deepseek-harness-integration.md](docs/guides/deepseek-harness-integration.md)。
 
+> ## 🆕 MiniMax Code / Mavis agent 集成
+> 全面适配 **MiniMax Code (Mavis Agent)** 本地插件规范与生命周期：
+> - **标准本地插件与 Hook 架构**：严格遵循 MiniMax Code 本地插件规范（`local-plugin-v1` / `local-plugin-hooks`），支持安装至 `~/.minimax/plugins/clawd-mavis/`，自动注册完整事件监听（`PreToolUse`、`PostToolUse`、`PermissionRequest`、`Stop`、`SessionStart` 等）。
+> - **双向交互气泡与决策闭环**：桌宠气泡可截获 Mavis 的工具执行审批、无害选择题（`ask_user`）以及计划模式提问，支持直接在桌宠气泡上点击选择/授权并实时回传 IPC 决策。
+> - **生动动作反馈（对齐 ZCode 体验）**：
+>   - `PostToolUse` 状态保持为 `working`，长轮次连续多步骤执行时持续敲击键盘，避免频繁闪切。
+>   - 轮次结束 `Stop` 状态触发 `attention` 挥手/致意庆祝动作，提供即时完工反馈。
+> - **官方高清图标**：Dashboard 与 Session HUD 原生集成 MiniMax 官方图标（`assets/icons/agents/mavis.png`），自动识别会话并清晰展示。
+> - **安装与注册**：提供一键安装脚本 `hooks/mavis-install.js`，包含自包含依赖同步与安全卸载；接线包含 `agents/mavis.js`、`agents/registry.js`、`src/integration-sync.js`、`src/prefs.js` 及对应单测。
+
 > ## 🆕 `allowHeadlessPermissions`（headless 会话权限气泡）
 > `src/main.js` + `src/server-route-permission.js` + `src/prefs.js`：允许 headless 会话触发权限气泡（默认关闭），供远程 / 无头场景使用。

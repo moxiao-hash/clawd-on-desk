@@ -170,6 +170,7 @@ const SCHEMA = {
       "hermes": { enabled: true },
       "deepseek-harness": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "zcode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      "mavis": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },

@@ -294,6 +294,18 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncMavisHooks() {
+    try {
+      if (typeof ctx.syncMavisHooksImpl === "function") return ctx.syncMavisHooksImpl();
+      const { installMavisHooks } = require("../hooks/mavis-install.js");
+      const result = installMavisHooks();
+      return result && typeof result === "object" ? result : { status: "ok" };
+    } catch (err) {
+      console.warn("Clawd: failed to sync Mavis hooks:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync Mavis hooks" };
+    }
+  }
+
   const AGENT_INTEGRATION_SYNCERS = Object.freeze({
     "gemini-cli": syncGeminiHooks,
     "antigravity-cli": syncAntigravityHooks,
@@ -308,6 +320,7 @@ function createIntegrationSyncRuntime(options = {}) {
     hermes: syncHermesPlugin,
     "deepseek-harness": syncDeepSeekHarnessBridge,
     zcode: syncZCodeHooks,
+    mavis: syncMavisHooks,
   });
 
   const AGENT_INTEGRATION_REPAIRERS = Object.freeze({

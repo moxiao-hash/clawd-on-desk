@@ -27,6 +27,7 @@ describe("doctor agent descriptors", () => {
         "openclaw",
         "hermes",
         "deepseek-harness",
+        "mavis",
       ]
     );
   });
@@ -44,6 +45,7 @@ describe("doctor agent descriptors", () => {
     const pi = require("../hooks/pi-install");
     const openclaw = require("../hooks/openclaw-install");
     const hermes = require("../hooks/hermes-install");
+    const mavis = require("../hooks/mavis-install");
 
     assert.strictEqual(getAgentDescriptor("claude-code").parentDir, claude.DEFAULT_PARENT_DIR);
     assert.strictEqual(getAgentDescriptor("claude-code").configPath, claude.DEFAULT_CONFIG_PATH);
@@ -88,6 +90,10 @@ describe("doctor agent descriptors", () => {
       getAgentDescriptor("hermes").configPath,
       path.join(hermes.resolveHermesHome(), "plugins", hermes.PLUGIN_ID)
     );
+
+    assert.strictEqual(getAgentDescriptor("mavis").parentDir, mavis.resolveMinimaxHome());
+    assert.strictEqual(getAgentDescriptor("mavis").configPath, mavis.resolvePluginDir());
+    assert.strictEqual(getAgentDescriptor("mavis").marker, mavis.PLUGIN_DIR_NAME);
   });
 
   it("returns copies from public accessors", () => {

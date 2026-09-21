@@ -22,6 +22,7 @@ describe("Agent Registry", () => {
       "hermes",
       "deepseek-harness",
       "zcode",
+      "mavis",
     ]);
   });
 
@@ -38,6 +39,7 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("openclaw").name, "OpenClaw");
     assert.strictEqual(registry.getAgent("hermes").name, "Hermes Agent");
     assert.strictEqual(registry.getAgent("deepseek-harness").name, "DeepSeek Harness");
+    assert.strictEqual(registry.getAgent("mavis").name, "Mavis (MiniMax Code)");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 
@@ -274,6 +276,19 @@ describe("Agent Registry", () => {
     assert.strictEqual(dsh.eventMap.PostToolUseFailure, "error");
     assert.strictEqual(dsh.eventMap.SubagentStart, "juggling");
     assert.strictEqual(dsh.eventMap.Stop, "attention");
+
+    const mavisAgent = registry.getAgent("mavis");
+    assert.strictEqual(mavisAgent.eventSource, "hook");
+    assert.strictEqual(mavisAgent.eventMap.SessionStart, "idle");
+    assert.strictEqual(mavisAgent.eventMap.SessionEnd, "sleeping");
+    assert.strictEqual(mavisAgent.eventMap.UserPromptSubmit, "thinking");
+    assert.strictEqual(mavisAgent.eventMap.PreToolUse, "working");
+    assert.strictEqual(mavisAgent.eventMap.PermissionRequest, "notification");
+    assert.strictEqual(mavisAgent.eventMap.PostToolUse, "working");
+    assert.strictEqual(mavisAgent.eventMap.SubagentStart, "juggling");
+    assert.strictEqual(mavisAgent.eventMap.SubagentStop, "working");
+    assert.strictEqual(mavisAgent.eventMap.Stop, "attention");
+    assert.strictEqual(mavisAgent.hookConfig.configFormat, "minimax-plugin-json");
   });
 
   it("treats Gemini CLI as a hook-only agent", () => {
